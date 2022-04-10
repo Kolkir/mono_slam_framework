@@ -88,10 +88,10 @@ src/Initializer.cc
 
 add_library(${SLAM_PROJECT_NAME} ${LIB_TYPE} ${SOURCES} ${INCLUDES})
 
-# this was already done
-# include(GenerateExportHeader)
-# generate_export_header(${SLAM_PROJECT_NAME})
-if (NOT SLAM_SHARED_LIBS)
+if (SLAM_SHARED_LIBS)
+  include(GenerateExportHeader)
+  generate_export_header(${SLAM_PROJECT_NAME})
+else()
   target_compile_definitions(${SLAM_PROJECT_NAME} PUBLIC SLAM_PIPELINE_STATIC_DEFINE)
 endif()
 
