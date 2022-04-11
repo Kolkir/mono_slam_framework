@@ -1,6 +1,7 @@
 #include <chrono>
 #include <memory>
 #include <opencv2/core/core.hpp>
+#include <opencv2/core/ocl.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <thread>
 #include <webots/Camera.hpp>
@@ -17,9 +18,10 @@ using namespace webots;
 int main(int /*argc*/, char** /*argv*/) {
   namespace slam = SLAM_PIPELINE;
 
-  /*for (;;) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }*/
+  //for (;;) {
+  //  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  //}
+  //cv::ocl::setUseOpenCL(false);
 
   int width = 640;
   int height = 480;

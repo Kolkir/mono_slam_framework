@@ -68,32 +68,6 @@ bool Initializer::InitializeOpenCV(const MatchFramesResult &matchResult,
       return true;
     }
   }
-
-  // mvMatches12.clear();
-  // mvMatches12.reserve(mvKeys2.size());
-  // for (size_t i = 0, iend = matchResult.GetNumMatches(); i < iend; i++) {
-  //  mvMatches12.push_back(
-  //      std::make_pair(static_cast<int>(i), static_cast<int>(i)));
-  //}
-
-  // cv::Mat inlierMask;
-  // double ransac_thresh = 2.5f;  // RANSAC inlier threshold
-  // cv::Mat homography;
-  // homography = cv::findHomography(mvKeys1, mvKeys2, cv::RANSAC,
-  // ransac_thresh,
-  //                                inlierMask);
-  // if (!homography.empty()) {
-  //  std::vector<bool> vbMatchesInliersH(matchResult.keyPoints1.size(),
-  //  false); for (unsigned i = 0; i < matchResult.keyPoints1.size(); i++) {
-  //    if (inlierMask.at<uchar>(i)) {
-  //      vbMatchesInliersH[i] = true;
-  //    }
-  //  }
-  //  const float minParallax = M_PI / 6.0;  // 15 degrees
-  //  homography.convertTo(homography, CV_32F);
-  //  return ReconstructH(vbMatchesInliersH, homography, mK, R21, t21, vP3D,
-  //                      vbTriangulated, minParallax, 50);
-  //}
   return false;
 }
 

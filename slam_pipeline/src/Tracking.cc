@@ -229,7 +229,7 @@ void Tracking::MonocularInitialization() {
     cv::Mat tcw;                  // Current Camera Translation
     vector<bool> vbTriangulated;  // Triangulated Correspondences (mvIniMatches)
 
-    if (mpInitializer->Initialize(mIniMatchResult, Rcw, tcw, mvIniP3D,
+    if (mpInitializer->InitializeOpenCV(mIniMatchResult, Rcw, tcw, mvIniP3D,
                                   vbTriangulated)) {
       mvIniMatches.resize(mIniMatchResult.GetNumMatches());
       for (size_t i = 0, iend = mvIniMatches.size(); i < iend; i++) {
@@ -549,6 +549,8 @@ bool Tracking::NeedNewKeyFrame() {
 void Tracking::CreateNewKeyFrame() {
   if (!mpLocalMapper->SetNotStop(true)) return;
 
+  std::cout << "New KF created" << std::endl;
+
   KeyFrame* pKF = mKeyFrameFactory->Create(*mCurrentFrame, mpMap, mpKeyFrameDB);
 
   mpReferenceKF = pKF;
@@ -584,7 +586,6 @@ void Tracking::SearchLocalPoints() {
     mCurrentFrame->mKeyPointMap.SetMapPoint(index, nullptr);
   }
 
-  int nToMatch = 0;
   // Project local frame points in frame and check its visibility
   for (vector<KeyFrame*>::const_iterator itKF = mvpLocalKeyFrames.begin(),
                                          itEndKF = mvpLocalKeyFrames.end();
@@ -592,6 +593,8 @@ void Tracking::SearchLocalPoints() {
     KeyFrame* pKF = *itKF;
     auto vpMPs = pKF->GetMapPointMatches();
 
+    // Project points in frame and check its visibility
+    int nToMatch = 0;
     for (auto itMP = vpMPs.Begin(), itEndMP = vpMPs.End(); itMP != itEndMP;
          ++itMP) {
       MapPoint* pMP = itMP->second.mapPoint;
@@ -607,16 +610,15 @@ void Tracking::SearchLocalPoints() {
           }
         }
       }
+    }
 
-      if (nToMatch > 0) {
-        auto matchResult =
-            mFeatureMatcher->MatchFrames(mCurrentFrame.get(), pKF);
-        for (size_t i = 0; i < matchResult.keyPoints1.size(); ++i) {
-          auto mp = matchResult.GetMapPoint2(i);
-          if (mp) {
-            mCurrentFrame->mKeyPointMap.SetMapPoint(matchResult.keyPoints1[i],
-                                                    mp);
-          }
+    if (nToMatch > 0) {
+      auto matchResult = mFeatureMatcher->MatchFrames(mCurrentFrame.get(), pKF);
+      for (size_t i = 0; i < matchResult.keyPoints1.size(); ++i) {
+        auto mp = matchResult.GetMapPoint2(i);
+        if (mp) {
+          mCurrentFrame->mKeyPointMap.SetMapPoint(matchResult.keyPoints1[i],
+                                                  mp);
         }
       }
     }

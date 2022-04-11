@@ -56,7 +56,6 @@ void LocalMapping::Run() {
 
     // Check if there are keyframes in the queue
     if (CheckNewKeyFrames()) {
-      // BoW conversion and insertion in Map
       ProcessNewKeyFrame();
 
       // Check recent MapPoints
@@ -196,10 +195,13 @@ void LocalMapping::CreateNewMapPoints() {
   const float &fy1 = mpCurrentKeyFrame->fy();
   const float &cx1 = mpCurrentKeyFrame->cx();
   const float &cy1 = mpCurrentKeyFrame->cy();
+  const auto invfx1 = 1.0f / fx1;
+  const auto invfy1 = 1.0f / fy1;
 
   int nnew = 0;
+  int ncandidates = 0;
 
-  // Search matches with epipolar restriction and triangulate
+  // Search matches and triangulate
   for (size_t i = 0; i < vpNeighKFs.size(); i++) {
     if (i > 0 && CheckNewKeyFrames()) return;
 
@@ -228,18 +230,21 @@ void LocalMapping::CreateNewMapPoints() {
     const float &fy2 = pKF2->fy();
     const float &cx2 = pKF2->cx();
     const float &cy2 = pKF2->cy();
+    const auto invfx2 = 1.0f / fx2;
+    const auto invfy2 = 1.0f / fy2;
 
     // Triangulate each match
     const int nmatches = matchResult.GetNumMatches();
+    ncandidates += nmatches;
     for (int ikp = 0; ikp < nmatches; ikp++) {
       cv::Point2f kp1 = matchResult.keyPoints1[ikp];
       cv::Point2f kp2 = matchResult.keyPoints2[ikp];
 
       // Check parallax between rays
-      cv::Mat xn1 =
-          (cv::Mat_<float>(3, 1) << (kp1.x - cx1), (kp1.y - cy1), 1.0);
-      cv::Mat xn2 =
-          (cv::Mat_<float>(3, 1) << (kp2.x - cx2), (kp2.y - cy2), 1.0);
+      cv::Mat xn1 = (cv::Mat_<float>(3, 1) << (kp1.x - cx1) * invfx1,
+                     (kp1.y - cy1) * invfy1, 1.0);
+      cv::Mat xn2 = (cv::Mat_<float>(3, 1) << (kp2.x - cx2) * invfx2,
+                     (kp2.y - cy2) * invfy2, 1.0);
 
       cv::Mat ray1 = Rwc1 * xn1;
       cv::Mat ray2 = Rwc2 * xn2;
@@ -317,6 +322,13 @@ void LocalMapping::CreateNewMapPoints() {
       mlpRecentAddedMapPoints.push_back(pMP);
 
       nnew++;
+    }
+
+    if (nnew > 0) {
+      std::cout << "New MPs created " << nnew << std::endl;
+    } else {
+      std::cout << "Failed to create new MPs, candidates " << ncandidates
+                << std::endl;
     }
   }
 }

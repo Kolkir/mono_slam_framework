@@ -31,6 +31,7 @@ class SLAM_PIPELINE_EXPORT MapDrawer {
   Map *mMap{nullptr};
   pcl::visualization::PCLVisualizer::Ptr mViewer;
   pcl::PointCloud<pcl::PointXYZ>::Ptr mPointCloud;
+  pcl::PointCloud<pcl::PointXYZ>::Ptr mPointCloudToDraw;
   std::mutex mGuard;
   std::thread mGuiThread;
   std::atomic<bool> mIsStopped{false};
