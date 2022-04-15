@@ -53,8 +53,8 @@ class SLAM_PIPELINE_EXPORT FrameBase {
  protected:
   // Rotation, translation and camera center
   cv::Mat mTwc;  // pose inverse
-  cv::Mat mRcw;
-  cv::Mat mtcw;
+  cv::Mat mRcw;  // roation
+  cv::Mat mtcw;  // translation
   cv::Mat mRwc;  // rot inverse
   cv::Mat mOw;   // camera center
 

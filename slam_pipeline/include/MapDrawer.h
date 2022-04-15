@@ -2,7 +2,22 @@
 #ifndef MAPDRAWER_H
 #define MAPDRAWER_H
 
+#ifdef _MSC_VER
+#pragma warning(push, 0)
+#else
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wall"
+#pragma clang diagnostic ignored "-Wextra"
+#endif
+
 #include <pcl/visualization/pcl_visualizer.h>
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#else
+#pragma clang diagnostic pop
+#endif
+
 #include "slam_pipeline_export.h"
 
 #include <mutex>
@@ -21,6 +36,8 @@ class SLAM_PIPELINE_EXPORT MapDrawer {
   // Update points from the last processed frame.
   void Update();
 
+  void SetPos(float x, float y, float z);
+
   void Start();
   void Stop();
 
@@ -32,10 +49,14 @@ class SLAM_PIPELINE_EXPORT MapDrawer {
   pcl::visualization::PCLVisualizer::Ptr mViewer;
   pcl::PointCloud<pcl::PointXYZ>::Ptr mPointCloud;
   pcl::PointCloud<pcl::PointXYZ>::Ptr mPointCloudToDraw;
+  std::vector<pcl::PointXYZ> mKeyFramePositions;
   std::mutex mGuard;
   std::thread mGuiThread;
   std::atomic<bool> mIsStopped{false};
   bool mIsCloudUpdated{false};
+  float m_curX{0};
+  float m_curY{0};
+  float m_curZ{0};
 };
 
 }  // namespace SLAM_PIPELINE

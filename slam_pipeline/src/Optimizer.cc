@@ -20,6 +20,14 @@
 
 #include "Optimizer.h"
 
+#ifdef _MSC_VER
+#pragma warning(push, 0)
+#else
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wall"
+#pragma clang diagnostic ignored "-Wextra"
+#endif
+
 #include <g2o/core/block_solver.h>
 #include <g2o/core/optimization_algorithm_levenberg.h>
 #include <g2o/core/robust_kernel_impl.h>
@@ -29,6 +37,13 @@
 #include <g2o/types/sim3/types_seven_dof_expmap.h>
 
 #include <Eigen/StdVector>
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#else
+#pragma clang diagnostic pop
+#endif
+
 #include <mutex>
 
 #include "Converter.h"
@@ -83,7 +98,7 @@ void Optimizer::BundleAdjustment(const std::vector<KeyFrame*>& vpKFs,
     if (pKF->mnId > maxKFid) maxKFid = pKF->mnId;
   }
 
-  const float thHuber2D = sqrt(5.99);
+  const double thHuber2D = sqrt(5.99);
 
   // Set MapPoint vertices
   for (size_t i = 0; i < vpMP.size(); i++) {
@@ -217,14 +232,14 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
   optimizer.addVertex(vSE3);
 
   // Set MapPoint vertices
-  const int N = pFrame->mKeyPointMap.GetSize();
+  const auto N = pFrame->mKeyPointMap.GetSize();
 
   std::vector<g2o::EdgeSE3ProjectXYZOnlyPose*> vpEdgesMono;
   std::vector<size_t> vnIndexEdgeMono;
   vpEdgesMono.reserve(N);
   vnIndexEdgeMono.reserve(N);
 
-  const float deltaMono = sqrt(5.991);
+  const auto deltaMono = sqrt(5.991);
   {
     std::unique_lock<std::mutex> lock(MapPoint::mGlobalMutex);
 
@@ -275,7 +290,7 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
   // We perform 4 optimizations, after each optimization we classify observation
   // as inlier/outlier At the next optimization, outliers are not included, but
   // at the end they can be classified as inliers again.
-  const float chi2Mono[4] = {5.991, 5.991, 5.991, 5.991};
+  const float chi2Mono[4] = {5.991f, 5.991f, 5.991f, 5.991f};
   const int its[4] = {10, 10, 10, 10};
 
   int nBad = 0;
@@ -288,13 +303,13 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
     for (size_t i = 0, iend = vpEdgesMono.size(); i < iend; i++) {
       g2o::EdgeSE3ProjectXYZOnlyPose* e = vpEdgesMono[i];
 
-      const size_t idx = vnIndexEdgeMono[i];
+      const auto idx = static_cast<int>(vnIndexEdgeMono[i]);
 
       if (pFrame->mKeyPointMap.IsOutlier(idx)) {
         e->computeError();
       }
 
-      const float chi2 = e->chi2();
+      const auto chi2 = e->chi2();
 
       if (chi2 > chi2Mono[it]) {
         pFrame->mKeyPointMap.SetOutlier(idx, true);
@@ -330,7 +345,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pKF, bool* pbStopFlag,
   pKF->mnBALocalForKF = pKF->mnId;
 
   const std::vector<KeyFrame*> vNeighKFs = pKF->GetVectorCovisibleKeyFrames();
-  for (int i = 0, iend = vNeighKFs.size(); i < iend; i++) {
+  for (size_t i = 0, iend = vNeighKFs.size(); i < iend; i++) {
     KeyFrame* pKFi = vNeighKFs[i];
     pKFi->mnBALocalForKF = pKF->mnId;
     if (!pKFi->isBad()) lLocalKeyFrames.push_back(pKFi);
@@ -415,7 +430,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pKF, bool* pbStopFlag,
   }
 
   // Set MapPoint vertices
-  const int nExpectedSize =
+  const auto nExpectedSize =
       (lLocalKeyFrames.size() + lFixedCameras.size()) * lLocalMapPoints.size();
 
   std::vector<g2o::EdgeSE3ProjectXYZ*> vpEdgesMono;
@@ -427,7 +442,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pKF, bool* pbStopFlag,
   std::vector<MapPoint*> vpMapPointEdgeMono;
   vpMapPointEdgeMono.reserve(nExpectedSize);
 
-  const float thHuberMono = sqrt(5.991);
+  const auto thHuberMono = sqrt(5.991);
 
   for (std::list<MapPoint*>::iterator lit = lLocalMapPoints.begin(),
                                       lend = lLocalMapPoints.end();
@@ -880,7 +895,7 @@ int Optimizer::OptimizeSim3(MatchFramesResult& vpMatches1, g2o::Sim3& g2oS12,
   optimizer.addVertex(vSim3);
 
   // Set MapPoint vertices
-  const int N = vpMatches1.GetNumMatches();
+  const auto N = vpMatches1.GetNumMatches();
   std::vector<g2o::EdgeSim3ProjectXYZ*> vpEdges12;
   std::vector<g2o::EdgeInverseSim3ProjectXYZ*> vpEdges21;
   std::vector<size_t> vnIndexEdge;

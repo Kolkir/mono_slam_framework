@@ -63,6 +63,19 @@ int Map::GetLastBigChangeIdx() {
   return mnBigChangeIdx;
 }
 
+std::pair<size_t, size_t> Map::GoodBadMapPointsInMap() {
+  std::unique_lock<std::mutex> lock(mMutexMap);
+  size_t nbad = 0;
+  size_t ngood = 0;
+  for (auto pMP : mspMapPoints) {
+    if (pMP->isBad())
+      ++nbad;
+    else
+      ++ngood;
+  }
+  return {ngood, nbad};
+}
+
 std::vector<KeyFrame *> Map::GetAllKeyFrames() {
   std::unique_lock<std::mutex> lock(mMutexMap);
   return std::vector<KeyFrame *>(mspKeyFrames.begin(), mspKeyFrames.end());

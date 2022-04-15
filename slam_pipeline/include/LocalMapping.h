@@ -80,10 +80,6 @@ class SLAM_PIPELINE_EXPORT LocalMapping {
 
   void KeyFrameCulling();
 
-  cv::Mat ComputeF12(KeyFrame*& pKF1, KeyFrame*& pKF2);
-
-  cv::Mat SkewSymmetricMatrix(const cv::Mat& v);
-
   void ResetIfRequested();
   bool mbResetRequested;
   std::mutex mMutexReset;

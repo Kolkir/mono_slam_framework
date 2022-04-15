@@ -45,6 +45,8 @@ class SLAM_PIPELINE_EXPORT Map {
   void InformNewBigChange();
   int GetLastBigChangeIdx();
 
+  std::pair<size_t, size_t> GoodBadMapPointsInMap();
+
   std::vector<KeyFrame*> GetAllKeyFrames();
   std::vector<MapPoint*> GetAllMapPoints();
 

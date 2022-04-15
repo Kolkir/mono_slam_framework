@@ -79,11 +79,6 @@ class SLAM_PIPELINE_EXPORT MapPoint {
   int nObs;
 
   // Variables used by the tracking
-  float mTrackProjX;
-  float mTrackProjY;
-  float mTrackProjXR;
-  bool mbTrackInView;
-  float mTrackViewCos;
   long unsigned int mnTrackReferenceForFrame;
   long unsigned int mnLastFrameSeen;
 

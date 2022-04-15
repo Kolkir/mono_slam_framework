@@ -107,7 +107,7 @@ class SLAM_PIPELINE_EXPORT Initializer {
   float mSigma, mSigma2;
 
   // Ransac max iterations
-  int mMaxIterations;
+  size_t mMaxIterations;
 
   // Ransac sets
   std::vector<std::vector<size_t> > mvSets;

@@ -18,6 +18,7 @@ SLAM_PIPELINE::MatchFramesResult FeatureMatcher::MatchFrames(
   feature_extractor_->detectAndCompute(pF2->imGray, mask, second_kp,
                                        second_desc);
 
+  feature_matcher_->clear();
   std::vector<std::vector<cv::DMatch> > matches;
   feature_matcher_->knnMatch(first_desc, second_desc, matches, 2);
 

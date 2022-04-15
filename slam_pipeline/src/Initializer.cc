@@ -49,7 +49,7 @@ bool Initializer::InitializeOpenCV(const MatchFramesResult &matchResult,
   E = cv::findEssentialMat(mvKeys1, mvKeys2, mK, cv::RANSAC, 0.999, 1.0,
                            inlierMask);
   if (!E.empty()) {
-    double distanceThresh = 1000;
+    double distanceThresh = 5;
     cv::Mat points3d;
     auto nInliners = cv::recoverPose(E, mvKeys1, mvKeys2, mK, R21, t21,
                                      distanceThresh, inlierMask, points3d);
@@ -58,9 +58,9 @@ bool Initializer::InitializeOpenCV(const MatchFramesResult &matchResult,
         if (inlierMask.at<uchar>(i)) {
           vbTriangulated[i] = true;
           auto w = points3d.at<double>(3, i);
-          vP3D[i].x = points3d.at<double>(0, i) / w;
-          vP3D[i].y = points3d.at<double>(1, i) / w;
-          vP3D[i].z = points3d.at<double>(2, i) / w;
+          vP3D[i].x = static_cast<float>(points3d.at<double>(0, i) / w);
+          vP3D[i].y = static_cast<float>(points3d.at<double>(1, i) / w);
+          vP3D[i].z = static_cast<float>(points3d.at<double>(2, i) / w);
         }
       }
       R21.convertTo(R21, CV_32F);
@@ -135,7 +135,7 @@ bool Initializer::Initialize(const MatchFramesResult &matchResult, cv::Mat &R21,
   // Compute ratio of scores
   float RH = SH / (SH + SF);
 
-  const float minParallax = M_PI / 6.0;  // 15 degrees
+  const float minParallax = static_cast<float>(M_PI / 6.0);  // 15 degrees
   // Try to reconstruct from homography or fundamental depending on the ratio
   // (0.40-0.45)
   if (RH > 0.40)
@@ -151,7 +151,7 @@ bool Initializer::Initialize(const MatchFramesResult &matchResult, cv::Mat &R21,
 void Initializer::FindHomography(std::vector<bool> &vbMatchesInliers,
                                  float &score, cv::Mat &H21) {
   // Number of putative matches
-  const int N = mvMatches12.size();
+  const size_t N = mvMatches12.size();
 
   // Normalize coordinates
   std::vector<cv::Point2f> vPn1, vPn2;
@@ -172,10 +172,10 @@ void Initializer::FindHomography(std::vector<bool> &vbMatchesInliers,
   float currentScore;
 
   // Perform all RANSAC iterations and save the solution with highest score
-  for (int it = 0; it < mMaxIterations; it++) {
+  for (size_t it = 0; it < mMaxIterations; it++) {
     // Select a minimum set
     for (size_t j = 0; j < 8; j++) {
-      int idx = mvSets[it][j];
+      auto idx = mvSets[it][j];
 
       vPn1i[j] = vPn1[mvMatches12[idx].first];
       vPn2i[j] = vPn2[mvMatches12[idx].second];
@@ -198,7 +198,7 @@ void Initializer::FindHomography(std::vector<bool> &vbMatchesInliers,
 void Initializer::FindFundamental(std::vector<bool> &vbMatchesInliers,
                                   float &score, cv::Mat &F21) {
   // Number of putative matches
-  const int N = vbMatchesInliers.size();
+  const size_t N = vbMatchesInliers.size();
 
   // Normalize coordinates
   std::vector<cv::Point2f> vPn1, vPn2;
@@ -219,10 +219,10 @@ void Initializer::FindFundamental(std::vector<bool> &vbMatchesInliers,
   float currentScore;
 
   // Perform all RANSAC iterations and save the solution with highest score
-  for (int it = 0; it < mMaxIterations; it++) {
+  for (size_t it = 0; it < mMaxIterations; it++) {
     // Select a minimum set
-    for (int j = 0; j < 8; j++) {
-      int idx = mvSets[it][j];
+    for (size_t j = 0; j < 8; j++) {
+      auto idx = mvSets[it][j];
 
       vPn1i[j] = vPn1[mvMatches12[idx].first];
       vPn2i[j] = vPn2[mvMatches12[idx].second];
@@ -244,7 +244,7 @@ void Initializer::FindFundamental(std::vector<bool> &vbMatchesInliers,
 
 cv::Mat Initializer::ComputeH21(const std::vector<cv::Point2f> &vP1,
                                 const std::vector<cv::Point2f> &vP2) {
-  const int N = vP1.size();
+  const int N = static_cast<int>(vP1.size());
 
   cv::Mat A(2 * N, 9, CV_32F);
 
@@ -284,7 +284,7 @@ cv::Mat Initializer::ComputeH21(const std::vector<cv::Point2f> &vP1,
 
 cv::Mat Initializer::ComputeF21(const std::vector<cv::Point2f> &vP1,
                                 const std::vector<cv::Point2f> &vP2) {
-  const int N = vP1.size();
+  const int N = static_cast<int>(vP1.size());
 
   cv::Mat A(N, 9, CV_32F);
 
@@ -321,7 +321,7 @@ cv::Mat Initializer::ComputeF21(const std::vector<cv::Point2f> &vP1,
 float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12,
                                    std::vector<bool> &vbMatchesInliers,
                                    float sigma) {
-  const int N = mvMatches12.size();
+  const size_t N = mvMatches12.size();
 
   const float h11 = H21.at<float>(0, 0);
   const float h12 = H21.at<float>(0, 1);
@@ -345,11 +345,11 @@ float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12,
 
   vbMatchesInliers.resize(N);
 
-  float score = 0;
+  float score = 0.0f;
 
-  const float th = 5.991;
+  const float th = 5.991f;
 
-  const float invSigmaSquare = 1.0 / (sigma * sigma);
+  const float invSigmaSquare = 1.0f / (sigma * sigma);
 
   for (int i = 0; i < N; i++) {
     bool bIn = true;
@@ -365,7 +365,7 @@ float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12,
     // Reprojection error in first image
     // x2in1 = H12*x2
 
-    const float w2in1inv = 1.0 / (h31inv * u2 + h32inv * v2 + h33inv);
+    const float w2in1inv = 1.0f / (h31inv * u2 + h32inv * v2 + h33inv);
     const float u2in1 = (h11inv * u2 + h12inv * v2 + h13inv) * w2in1inv;
     const float v2in1 = (h21inv * u2 + h22inv * v2 + h23inv) * w2in1inv;
 
@@ -382,7 +382,7 @@ float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12,
     // Reprojection error in second image
     // x1in2 = H21*x1
 
-    const float w1in2inv = 1.0 / (h31 * u1 + h32 * v1 + h33);
+    const float w1in2inv = 1.0f / (h31 * u1 + h32 * v1 + h33);
     const float u1in2 = (h11 * u1 + h12 * v1 + h13) * w1in2inv;
     const float v1in2 = (h21 * u1 + h22 * v1 + h23) * w1in2inv;
 
@@ -408,7 +408,7 @@ float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12,
 float Initializer::CheckFundamental(const cv::Mat &F21,
                                     std::vector<bool> &vbMatchesInliers,
                                     float sigma) {
-  const int N = mvMatches12.size();
+  const size_t N = mvMatches12.size();
 
   const float f11 = F21.at<float>(0, 0);
   const float f12 = F21.at<float>(0, 1);
@@ -422,12 +422,12 @@ float Initializer::CheckFundamental(const cv::Mat &F21,
 
   vbMatchesInliers.resize(N);
 
-  float score = 0;
+  float score = 0.0f;
 
-  const float th = 3.841;
-  const float thScore = 5.991;
+  const float th = 3.841f;
+  const float thScore = 5.991f;
 
-  const float invSigmaSquare = 1.0 / (sigma * sigma);
+  const float invSigmaSquare = 1.0f / (sigma * sigma);
 
   for (int i = 0; i < N; i++) {
     bool bIn = true;
@@ -512,13 +512,13 @@ bool Initializer::ReconstructF(std::vector<bool> &vbMatchesInliers,
   float parallax1, parallax2, parallax3, parallax4;
 
   int nGood1 = CheckRT(R1, t1, mvKeys1, mvKeys2, mvMatches12, vbMatchesInliers,
-                       K, vP3D1, 4.0 * mSigma2, vbTriangulated1, parallax1);
+                       K, vP3D1, 4.0f * mSigma2, vbTriangulated1, parallax1);
   int nGood2 = CheckRT(R2, t1, mvKeys1, mvKeys2, mvMatches12, vbMatchesInliers,
-                       K, vP3D2, 4.0 * mSigma2, vbTriangulated2, parallax2);
+                       K, vP3D2, 4.0f * mSigma2, vbTriangulated2, parallax2);
   int nGood3 = CheckRT(R1, t2, mvKeys1, mvKeys2, mvMatches12, vbMatchesInliers,
-                       K, vP3D3, 4.0 * mSigma2, vbTriangulated3, parallax3);
+                       K, vP3D3, 4.0f * mSigma2, vbTriangulated3, parallax3);
   int nGood4 = CheckRT(R2, t2, mvKeys1, mvKeys2, mvMatches12, vbMatchesInliers,
-                       K, vP3D4, 4.0 * mSigma2, vbTriangulated4, parallax4);
+                       K, vP3D4, 4.0f * mSigma2, vbTriangulated4, parallax4);
 
   int maxGood = std::max(nGood1, std::max(nGood2, std::max(nGood3, nGood4)));
 
@@ -602,7 +602,7 @@ bool Initializer::ReconstructH(std::vector<bool> &vbMatchesInliers,
   cv::SVD::compute(A, w, U, Vt, cv::SVD::FULL_UV);
   V = Vt.t();
 
-  float s = cv::determinant(U) * cv::determinant(Vt);
+  float s = static_cast<float>(cv::determinant(U) * cv::determinant(Vt));
 
   float d1 = w.at<float>(0);
   float d2 = w.at<float>(1);
@@ -698,7 +698,7 @@ bool Initializer::ReconstructH(std::vector<bool> &vbMatchesInliers,
 
   int bestGood = 0;
   int secondBestGood = 0;
-  int bestSolutionIdx = -1;
+  size_t bestSolutionIdx = 0;
   float bestParallax = -1;
   std::vector<cv::Point3f> bestP3D;
   std::vector<bool> bestTriangulated;
@@ -712,7 +712,7 @@ bool Initializer::ReconstructH(std::vector<bool> &vbMatchesInliers,
     std::vector<bool> vbTriangulatedi;
     int nGood =
         CheckRT(vR[i], vt[i], mvKeys1, mvKeys2, mvMatches12, vbMatchesInliers,
-                K, vP3Di, 4.0 * mSigma2, vbTriangulatedi, parallaxi);
+                K, vP3Di, 4.0f * mSigma2, vbTriangulatedi, parallaxi);
 
     if (nGood > bestGood) {
       secondBestGood = bestGood;
@@ -760,11 +760,11 @@ void Initializer::Normalize(const std::vector<cv::Point2f> &vKeys,
                             cv::Mat &T) {
   float meanX = 0;
   float meanY = 0;
-  const int N = vKeys.size();
+  const size_t N = vKeys.size();
 
   vNormalizedPoints.resize(N);
 
-  for (int i = 0; i < N; i++) {
+  for (size_t i = 0; i < N; i++) {
     meanX += vKeys[i].x;
     meanY += vKeys[i].y;
   }
@@ -775,7 +775,7 @@ void Initializer::Normalize(const std::vector<cv::Point2f> &vKeys,
   float meanDevX = 0;
   float meanDevY = 0;
 
-  for (int i = 0; i < N; i++) {
+  for (size_t i = 0; i < N; i++) {
     vNormalizedPoints[i].x = vKeys[i].x - meanX;
     vNormalizedPoints[i].y = vKeys[i].y - meanY;
 
@@ -786,8 +786,8 @@ void Initializer::Normalize(const std::vector<cv::Point2f> &vKeys,
   meanDevX = meanDevX / N;
   meanDevY = meanDevY / N;
 
-  float sX = 1.0 / meanDevX;
-  float sY = 1.0 / meanDevY;
+  float sX = 1.0f / meanDevX;
+  float sY = 1.0f / meanDevY;
 
   for (int i = 0; i < N; i++) {
     vNormalizedPoints[i].x = vNormalizedPoints[i].x * sX;
@@ -817,7 +817,7 @@ int Initializer::CheckRT(const cv::Mat &R, const cv::Mat &t,
   vbGood = std::vector<bool>(vKeys1.size(), false);
   vP3D.resize(vKeys1.size());
 
-  std::vector<float> vCosParallax;
+  std::vector<double> vCosParallax;
   vCosParallax.reserve(vKeys1.size());
 
   // Camera 1 Projection Matrix K[I|0]
@@ -853,12 +853,12 @@ int Initializer::CheckRT(const cv::Mat &R, const cv::Mat &t,
 
     // Check parallax
     cv::Mat normal1 = p3dC1 - O1;
-    float dist1 = cv::norm(normal1);
+    auto dist1 = cv::norm(normal1);
 
     cv::Mat normal2 = p3dC1 - O2;
-    float dist2 = cv::norm(normal2);
+    auto dist2 = cv::norm(normal2);
 
-    float cosParallax = normal1.dot(normal2) / (dist1 * dist2);
+    auto cosParallax = normal1.dot(normal2) / (dist1 * dist2);
 
     // Check depth in front of first camera (only if enough parallax, as
     // "infinite" points can easily go to negative depth)
@@ -872,7 +872,7 @@ int Initializer::CheckRT(const cv::Mat &R, const cv::Mat &t,
 
     // Check reprojection error in first image
     float im1x, im1y;
-    float invZ1 = 1.0 / p3dC1.at<float>(2);
+    float invZ1 = 1.0f / p3dC1.at<float>(2);
     im1x = fx * p3dC1.at<float>(0) * invZ1 + cx;
     im1y = fy * p3dC1.at<float>(1) * invZ1 + cy;
 
@@ -883,7 +883,7 @@ int Initializer::CheckRT(const cv::Mat &R, const cv::Mat &t,
 
     // Check reprojection error in second image
     float im2x, im2y;
-    float invZ2 = 1.0 / p3dC2.at<float>(2);
+    float invZ2 = 1.0f / p3dC2.at<float>(2);
     im2x = fx * p3dC2.at<float>(0) * invZ2 + cx;
     im2y = fy * p3dC2.at<float>(1) * invZ2 + cy;
 
@@ -903,8 +903,8 @@ int Initializer::CheckRT(const cv::Mat &R, const cv::Mat &t,
   if (nGood > 0) {
     sort(vCosParallax.begin(), vCosParallax.end());
 
-    size_t idx = std::min(50, int(vCosParallax.size() - 1));
-    parallax = acos(vCosParallax[idx]) * 180 / CV_PI;
+    size_t idx = std::min(size_t(50), vCosParallax.size() - 1);
+    parallax = static_cast<float>(acos(vCosParallax[idx]) * 180 / CV_PI);
   } else
     parallax = 0;
 

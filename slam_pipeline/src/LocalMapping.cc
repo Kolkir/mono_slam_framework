@@ -77,6 +77,8 @@ void LocalMapping::Run() {
           Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame, &mbAbortBA,
                                            mpMap);
 
+        std::cout << "Local BA done" << std::endl;
+
         // Check redundant local Keyframes
         KeyFrameCulling();
       }
@@ -198,8 +200,8 @@ void LocalMapping::CreateNewMapPoints() {
   const auto invfx1 = 1.0f / fx1;
   const auto invfy1 = 1.0f / fy1;
 
-  int nnew = 0;
-  int ncandidates = 0;
+  size_t nnew = 0;
+  size_t ncandidates = 0;
 
   // Search matches and triangulate
   for (size_t i = 0; i < vpNeighKFs.size(); i++) {
@@ -210,10 +212,10 @@ void LocalMapping::CreateNewMapPoints() {
     // Check first that baseline is not too short
     cv::Mat Ow2 = pKF2->GetCameraCenter();
     cv::Mat vBaseline = Ow2 - Ow1;
-    const float baseline = cv::norm(vBaseline);
+    const auto baseline = cv::norm(vBaseline);
 
-    const float medianDepthKF2 = pKF2->ComputeSceneMedianDepth(2);
-    const float ratioBaselineDepth = baseline / medianDepthKF2;
+    const auto medianDepthKF2 = pKF2->ComputeSceneMedianDepth(2);
+    const auto ratioBaselineDepth = baseline / medianDepthKF2;
 
     if (ratioBaselineDepth < 0.01) continue;
 
@@ -234,9 +236,9 @@ void LocalMapping::CreateNewMapPoints() {
     const auto invfy2 = 1.0f / fy2;
 
     // Triangulate each match
-    const int nmatches = matchResult.GetNumMatches();
+    const auto nmatches = matchResult.GetNumMatches();
     ncandidates += nmatches;
-    for (int ikp = 0; ikp < nmatches; ikp++) {
+    for (size_t ikp = 0; ikp < nmatches; ikp++) {
       cv::Point2f kp1 = matchResult.keyPoints1[ikp];
       cv::Point2f kp2 = matchResult.keyPoints2[ikp];
 
@@ -248,7 +250,7 @@ void LocalMapping::CreateNewMapPoints() {
 
       cv::Mat ray1 = Rwc1 * xn1;
       cv::Mat ray2 = Rwc2 * xn2;
-      const float cosParallaxRays =
+      const auto cosParallaxRays =
           ray1.dot(ray2) / (cv::norm(ray1) * cv::norm(ray2));
 
       cv::Mat x3D;
@@ -277,34 +279,34 @@ void LocalMapping::CreateNewMapPoints() {
       cv::Mat x3Dt = x3D.t();
 
       // Check triangulation in front of cameras
-      float z1 = Rcw1.row(2).dot(x3Dt) + tcw1.at<float>(2);
+      auto z1 = Rcw1.row(2).dot(x3Dt) + tcw1.at<float>(2);
       if (z1 <= 0) continue;
 
-      float z2 = Rcw2.row(2).dot(x3Dt) + tcw2.at<float>(2);
+      auto z2 = Rcw2.row(2).dot(x3Dt) + tcw2.at<float>(2);
       if (z2 <= 0) continue;
 
       // Check reprojection error in first keyframe
-      const float x1 = Rcw1.row(0).dot(x3Dt) + tcw1.at<float>(0);
-      const float y1 = Rcw1.row(1).dot(x3Dt) + tcw1.at<float>(1);
-      const float invz1 = 1.0 / z1;
+      const auto x1 = Rcw1.row(0).dot(x3Dt) + tcw1.at<float>(0);
+      const auto y1 = Rcw1.row(1).dot(x3Dt) + tcw1.at<float>(1);
+      const auto invz1 = 1.0 / z1;
 
-      float u1 = fx1 * x1 * invz1 + cx1;
-      float v1 = fy1 * y1 * invz1 + cy1;
-      float errX1 = u1 - kp1.x;
-      float errY1 = v1 - kp1.y;
+      auto u1 = fx1 * x1 * invz1 + cx1;
+      auto v1 = fy1 * y1 * invz1 + cy1;
+      auto errX1 = u1 - kp1.x;
+      auto errY1 = v1 - kp1.y;
       if ((errX1 * errX1 + errY1 * errY1) > 5.991) {
         continue;
       }
 
       // Check reprojection error in second keyframe
-      const float x2 = Rcw2.row(0).dot(x3Dt) + tcw2.at<float>(0);
-      const float y2 = Rcw2.row(1).dot(x3Dt) + tcw2.at<float>(1);
-      const float invz2 = 1.0 / z2;
+      const auto x2 = Rcw2.row(0).dot(x3Dt) + tcw2.at<float>(0);
+      const auto y2 = Rcw2.row(1).dot(x3Dt) + tcw2.at<float>(1);
+      const auto invz2 = 1.0 / z2;
 
-      float u2 = fx2 * x2 * invz2 + cx2;
-      float v2 = fy2 * y2 * invz2 + cy2;
-      float errX2 = u2 - kp2.x;
-      float errY2 = v2 - kp2.y;
+      auto u2 = fx2 * x2 * invz2 + cx2;
+      auto v2 = fy2 * y2 * invz2 + cy2;
+      auto errX2 = u2 - kp2.x;
+      auto errY2 = v2 - kp2.y;
       if ((errX2 * errX2 + errY2 * errY2) > 5.991) continue;
 
       // Triangulation is succesfull
@@ -323,13 +325,12 @@ void LocalMapping::CreateNewMapPoints() {
 
       nnew++;
     }
-
-    if (nnew > 0) {
-      std::cout << "New MPs created " << nnew << std::endl;
-    } else {
-      std::cout << "Failed to create new MPs, candidates " << ncandidates
-                << std::endl;
-    }
+  }
+  if (nnew > 0) {
+    std::cout << "New MPs created " << nnew << std::endl;
+  } else {
+    std::cout << "Failed to create new MPs, candidates " << ncandidates
+              << std::endl;
   }
 }
 
@@ -405,23 +406,6 @@ void LocalMapping::SearchInNeighbors() {
   mpCurrentKeyFrame->UpdateConnections();
 }
 
-cv::Mat LocalMapping::ComputeF12(KeyFrame *&pKF1, KeyFrame *&pKF2) {
-  cv::Mat R1w = pKF1->GetRotation();
-  cv::Mat t1w = pKF1->GetTranslation();
-  cv::Mat R2w = pKF2->GetRotation();
-  cv::Mat t2w = pKF2->GetTranslation();
-
-  cv::Mat R12 = R1w * R2w.t();
-  cv::Mat t12 = -R1w * R2w.t() * t2w + t1w;
-
-  cv::Mat t12x = SkewSymmetricMatrix(t12);
-
-  const cv::Mat &K1 = pKF1->mK;
-  const cv::Mat &K2 = pKF2->mK;
-
-  return K1.t().inv() * t12x * R12 * K2.inv();
-}
-
 void LocalMapping::RequestStop() {
   std::unique_lock<std::mutex> lock(mMutexStop);
   mbStopRequested = true;
@@ -494,7 +478,7 @@ void LocalMapping::KeyFrameCulling() {
   // consider close stereo points
   std::vector<KeyFrame *> vpLocalKeyFrames =
       mpCurrentKeyFrame->GetVectorCovisibleKeyFrames();
-
+  int nbadframes = 0;
   for (std::vector<KeyFrame *>::iterator vit = vpLocalKeyFrames.begin(),
                                          vend = vpLocalKeyFrames.end();
        vit != vend; vit++) {
@@ -533,14 +517,12 @@ void LocalMapping::KeyFrameCulling() {
       }
     }
 
-    if (nRedundantObservations > 0.9 * nMPs) pKF->SetBadFlag();
+    if (nRedundantObservations > 0.9 * nMPs) {
+      pKF->SetBadFlag();
+      ++nbadframes;
+    }
   }
-}
-
-cv::Mat LocalMapping::SkewSymmetricMatrix(const cv::Mat &v) {
-  return (cv::Mat_<float>(3, 3) << 0, -v.at<float>(2), v.at<float>(1),
-          v.at<float>(2), 0, -v.at<float>(0), -v.at<float>(1), v.at<float>(0),
-          0);
+  std::cout << "Bad KF " << nbadframes << std::endl;
 }
 
 void LocalMapping::RequestReset() {

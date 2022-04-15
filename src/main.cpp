@@ -18,10 +18,10 @@ using namespace webots;
 int main(int /*argc*/, char** /*argv*/) {
   namespace slam = SLAM_PIPELINE;
 
-  //for (;;) {
+  // for (;;) {
   //  std::this_thread::sleep_for(std::chrono::milliseconds(100));
   //}
-  //cv::ocl::setUseOpenCL(false);
+  // cv::ocl::setUseOpenCL(false);
 
   int width = 640;
   int height = 480;
@@ -39,17 +39,17 @@ int main(int /*argc*/, char** /*argv*/) {
   // featureMatcher.SetThreshold(0.1);
 
   FeatureMatcher featureMatcher;
-  featureMatcher.SetThreshold(0.8);
+  featureMatcher.SetThreshold(0.5f);
 
   slam::FeatureParameters slam_parameters;
-  slam_parameters.cx = camera->getWidth() / 2;
-  slam_parameters.cy = camera->getHeight() / 2;
+  slam_parameters.cx = static_cast<float>(camera->getWidth() / 2);
+  slam_parameters.cy = static_cast<float>(camera->getHeight() / 2);
   auto hFov = camera->getFov();
-  slam_parameters.fx = slam_parameters.cx / tan(hFov / 2);
+  slam_parameters.fx = static_cast<float>(slam_parameters.cx / tan(hFov / 2));
   auto vFov =
       2 * atan(tan(hFov * 0.5) *
                (static_cast<double>(camera->getHeight()) / camera->getWidth()));
-  slam_parameters.fy = slam_parameters.cy / tan(vFov / 2);
+  slam_parameters.fy = static_cast<float>(slam_parameters.cy / tan(vFov / 2));
   slam_parameters.maxFrames = 10;
   slam::KeyFrameMatchDatabase keyFrameDatabase(&featureMatcher);
   slam::FrameFactory frameFactory;
@@ -92,8 +92,9 @@ int main(int /*argc*/, char** /*argv*/) {
       cv::cvtColor(img, img_gray, cv::COLOR_BGRA2GRAY);
 
       auto time_stamp = std::chrono::high_resolution_clock::now();
-      slam_system.TrackMonocular(img_gray.clone(),
-                                 time_stamp.time_since_epoch().count());
+      slam_system.TrackMonocular(
+          img_gray.clone(),
+          static_cast<double>(time_stamp.time_since_epoch().count()));
       out_img = slam_system.GetIniMatchImage();
 
       // show

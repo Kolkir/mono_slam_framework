@@ -52,8 +52,8 @@ Tracking::Tracking(System* pSys, MapDrawer* pMapDrawer, Map* pMap,
       mFrameFactory(frameFactory),
       mKeyFrameFactory(keyFrameFactory),
       mFeatureMatcher(featureMatcher) {
-  mImgWidth = parameters.cx * 2;
-  mImgHeight = parameters.cy * 2;
+  mImgWidth = static_cast<int>(parameters.cx * 2);
+  mImgHeight = static_cast<int>(parameters.cy * 2);
   mIniMatchImage = cv::Mat(cv::Size(mImgWidth * 2, mImgHeight), CV_8UC3);
 
   cv::Mat K = cv::Mat::eye(3, 3, CV_32F);
@@ -134,16 +134,15 @@ void Tracking::Track() {
 
     mCurrentFrame->mpReferenceKF = mpReferenceKF;
 
-    // If we have an initial estimation of the camera pose and matching. Track
-    // the local map.
-    bOK = TrackLocalMap();
+    if (bOK) {
+      // If we have an initial estimation of the camera pose and matching. Track
+      // the local map.
+      bOK = TrackLocalMap();
+    }
     if (bOK)
       mState = OK;
     else
       mState = LOST;
-
-    // Update drawer
-    mpMapDrawer->Update();
 
     // If tracking were good, check if we insert a keyframe
     if (bOK) {
@@ -172,6 +171,23 @@ void Tracking::Track() {
         return;
       }
     }
+
+    // Update drawer
+    if (mState == OK) {
+      mpMapDrawer->Update();
+      auto pos = mCurrentFrame->GetTranslation();
+      mpMapDrawer->SetPos(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
+      // std::cout << "F pos x = " << pos.at<float>(0) << " y = " <<
+      // pos.at<float>(1)
+      //          << " z = " << pos.at<float>(2) << std::endl;
+    }
+
+    // show map statistics
+    auto kfNum = mpMap->KeyFramesInMap();
+    std::cout << "KF " << kfNum << std::endl;
+    auto goodBadPointsNum = mpMap->GoodBadMapPointsInMap();
+    std::cout << "Good MP " << goodBadPointsNum.first << " Bad MP "
+              << goodBadPointsNum.second << std::endl;
 
     if (!mCurrentFrame->mpReferenceKF)
       mCurrentFrame->mpReferenceKF = mpReferenceKF;
@@ -248,6 +264,8 @@ void Tracking::MonocularInitialization() {
       mCurrentFrame->SetPose(Tcw);
 
       CreateInitialMapMonocular();
+    } else {
+      std::cout << "Initialization failed!" << std::endl;
     }
   }
 }
@@ -362,7 +380,7 @@ bool Tracking::TrackReferenceKeyFrame() {
   auto matchResult =
       mFeatureMatcher->MatchFrames(mCurrentFrame.get(), mpReferenceKF);
 
-  int nmatches = matchResult.GetNumMatches();
+  auto nmatches = matchResult.GetNumMatches();
 
   if (nmatches < 15) {
     return false;
@@ -388,7 +406,6 @@ bool Tracking::TrackReferenceKeyFrame() {
     if (i->second.outlier) {
       MapPoint* pMP = i->second.mapPoint;
       pointsToRemove.push_back(i->first);
-      pMP->mbTrackInView = false;
       pMP->mnLastFrameSeen = mCurrentFrame->mnId;
       nmatches--;
     } else if (i->second.mapPoint->Observations() > 0) {
@@ -423,7 +440,7 @@ bool Tracking::TrackWithMotionModel() {
   auto matchResult =
       mFeatureMatcher->MatchFrames(mCurrentFrame.get(), mLastFrame.get());
 
-  int nmatches = matchResult.GetNumMatches();
+  auto nmatches = matchResult.GetNumMatches();
 
   if (nmatches < 20) {
     return false;
@@ -449,7 +466,6 @@ bool Tracking::TrackWithMotionModel() {
     if (i->second.outlier) {
       MapPoint* pMP = i->second.mapPoint;
       pointsToRemove.push_back(i->first);
-      pMP->mbTrackInView = false;
       pMP->mnLastFrameSeen = mCurrentFrame->mnId;
       nmatches--;
     } else if (i->second.mapPoint->Observations() > 0) {
@@ -502,7 +518,7 @@ bool Tracking::NeedNewKeyFrame() {
   if (mpLocalMapper->isStopped() || mpLocalMapper->stopRequested())
     return false;
 
-  const int nKFs = mpMap->KeyFramesInMap();
+  const int nKFs = static_cast<int>(mpMap->KeyFramesInMap());
 
   // Do not insert keyframes if not enough frames have passed from last
   // relocalisation
@@ -577,7 +593,6 @@ void Tracking::SearchLocalPoints() {
       } else {
         pMP->IncreaseVisible();
         pMP->mnLastFrameSeen = mCurrentFrame->mnId;
-        pMP->mbTrackInView = false;
       }
     }
   }
@@ -737,7 +752,7 @@ bool Tracking::Relocalization() {
 
   if (vpCandidateKFs.empty()) return false;
 
-  const int nKFs = vpCandidateKFs.size();
+  const auto nKFs = vpCandidateKFs.size();
 
   // We perform first an matching with each candidate
   // If enough matches are found we setup a PnP solver
@@ -760,13 +775,13 @@ bool Tracking::Relocalization() {
     else {
       vvpMapPointMatches[i] =
           mFeatureMatcher->MatchFrames(mCurrentFrame.get(), pKF);
-      int nmatches = vvpMapPointMatches[i].GetNumMatches();
+      auto nmatches = vvpMapPointMatches[i].GetNumMatches();
       if (nmatches < 15) {
         vbDiscarded[i] = true;
         continue;
       } else {
         PnPsolver* pSolver = new PnPsolver(vvpMapPointMatches[i]);
-        pSolver->SetRansacParameters(0.99, 10, 300, 4, 0.5, 5.991);
+        pSolver->SetRansacParameters(0.99, 10, 300, 4, 0.5, 5.991f);
         vpPnPsolvers[i] = pSolver;
         nCandidates++;
       }
@@ -801,9 +816,9 @@ bool Tracking::Relocalization() {
 
         set<MapPoint*> sFound;
 
-        const int np = vbInliers.size();
+        const auto np = vbInliers.size();
 
-        for (int j = 0; j < np; j++) {
+        for (size_t j = 0; j < np; j++) {
           if (vbInliers[j]) {
             mCurrentFrame->mKeyPointMap.SetMapPoint(
                 vvpMapPointMatches[i].keyPoints1[j],

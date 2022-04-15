@@ -29,8 +29,23 @@
 #include "KeyFrameDatabase.h"
 #include "LocalMapping.h"
 #include "Map.h"
-#include <g2o/types/sim3/types_seven_dof_expmap.h>
 #include "Tracking.h"
+
+#ifdef _MSC_VER
+#pragma warning(push, 0)
+#else
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wall"
+#pragma clang diagnostic ignored "-Wextra"
+#endif
+
+#include <g2o/types/sim3/types_seven_dof_expmap.h>
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#else
+#pragma clang diagnostic pop
+#endif
 
 namespace SLAM_PIPELINE {
 

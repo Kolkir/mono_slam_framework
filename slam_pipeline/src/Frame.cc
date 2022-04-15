@@ -49,8 +49,6 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, cv::Mat &K)
 }
 
 bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit) {
-  pMP->mbTrackInView = false;
-
   // 3D in absolute coordinates
   cv::Mat P = pMP->GetWorldPos();
 
@@ -84,13 +82,6 @@ bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit) {
   const float viewCos = static_cast<float>(PO.dot(Pn) / dist);
 
   if (viewCos < viewingCosLimit) return false;
-
-  // Data used by the tracking
-  pMP->mbTrackInView = true;
-  pMP->mTrackProjX = u;
-  pMP->mTrackProjXR = u;
-  pMP->mTrackProjY = v;
-  pMP->mTrackViewCos = viewCos;
 
   return true;
 }

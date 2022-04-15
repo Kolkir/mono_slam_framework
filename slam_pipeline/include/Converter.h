@@ -21,8 +21,23 @@
 #ifndef CONVERTER_H
 #define CONVERTER_H
 
+#ifdef _MSC_VER
+#pragma warning(push, 0)
+#else
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wall"
+#pragma clang diagnostic ignored "-Wextra"
+#endif
+
 #include <g2o/types/sba/types_six_dof_expmap.h>
 #include <g2o/types/sim3/types_seven_dof_expmap.h>
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#else
+#pragma clang diagnostic pop
+#endif
+
 #include "slam_pipeline_export.h"
 
 #include <Eigen/Dense>
