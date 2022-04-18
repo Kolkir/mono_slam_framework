@@ -21,6 +21,8 @@ class SLAM_PIPELINE_EXPORT KeyPointMap {
 
   KeyPointMap() = default;
   KeyPointMap(int cols, int rows);
+  KeyPointMap(const KeyPointMap& keyPointMap);
+  KeyPointMap& operator=(const KeyPointMap& keyPointMap);
 
   // If mapPoint is nullptr it will erase the existing one
   void SetMapPoint(const cv::Point2i& keyPoint, MapPoint* mapPoint);

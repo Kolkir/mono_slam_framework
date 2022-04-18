@@ -42,8 +42,11 @@ void MapDrawer::Update() {
   auto frames = mMap->GetAllKeyFrames();
   for (auto& kf : frames) {
     auto pos = kf->GetTranslation();
-    mKeyFramePositions.emplace_back(pos.at<float>(0), pos.at<float>(1),
-                                    pos.at<float>(2));
+    cv::Mat dir = (kf->GetCameraCenter() - pos);
+    dir /= cv::norm(dir);
+    mKeyFramePositions.emplace_back(
+        pcl::PointXYZ{pos.at<float>(0), pos.at<float>(1), pos.at<float>(2)},
+        pcl::PointXYZ{dir.at<float>(0), dir.at<float>(1), dir.at<float>(2)});
   }
 }
 
@@ -75,6 +78,7 @@ void MapDrawer::CreateViewer() {
 void MapDrawer::ThreadFunc() {
   CreateViewer();
   if (mViewer) {
+    pcl::ModelCoefficients cone_coeff;
     while (!mIsStopped && !mViewer->wasStopped()) {
       {
         std::unique_lock<std::mutex> lock(mGuard);
@@ -88,10 +92,21 @@ void MapDrawer::ThreadFunc() {
           mViewer->addSphere(pcl::PointXYZ(m_curX, m_curY, m_curZ),
                              /*radius*/ 0.02, "pos_sphere");
           int i = 0;
-          for (auto& pos : mKeyFramePositions) {
+          for (auto& posAndDir : mKeyFramePositions) {
             std::stringstream name;
             name << "kf" << i;
-            mViewer->addSphere(pos, /*radius*/ 0.01, 1.0, 0.0, 0.0, name.str());
+            cone_coeff.values.clear();
+            cone_coeff.values.resize(7);  // We need 7 values
+            cone_coeff.values[0] = posAndDir.first.x;
+            cone_coeff.values[1] = posAndDir.first.y;
+            cone_coeff.values[2] = posAndDir.first.z;
+            // The height of the cone is set using the magnitude of the
+            // axis_direction vector.
+            cone_coeff.values[3] = posAndDir.second.x * 0.02f;
+            cone_coeff.values[4] = posAndDir.second.y * 0.02f;
+            cone_coeff.values[5] = posAndDir.second.z * 0.02f;
+            cone_coeff.values[6] = 45;  // degrees
+            mViewer->addCone(cone_coeff, name.str());
             ++i;
           }
           mIsCloudUpdated = false;

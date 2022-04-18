@@ -7,6 +7,20 @@ KeyPointMap::KeyPointMap(int cols, int rows) : mCols(cols), mRows(rows) {
   Clear();
 }
 
+KeyPointMap::KeyPointMap(const KeyPointMap& keyPointMap)
+    : mCols(keyPointMap.mCols),
+      mRows(keyPointMap.mRows),
+      mKeyPointMap(keyPointMap.mKeyPointMap.clone()),
+      mMapPoints(keyPointMap.mMapPoints) {}
+
+KeyPointMap& KeyPointMap::operator=(const KeyPointMap& keyPointMap) {
+  mCols = keyPointMap.mCols;
+  mRows = keyPointMap.mRows;
+  mKeyPointMap = keyPointMap.mKeyPointMap.clone();
+  mMapPoints = keyPointMap.mMapPoints;
+  return *this;
+}
+
 void KeyPointMap::Clear() {
   const int dims = 2;
   int size[2] = {mCols, mRows};

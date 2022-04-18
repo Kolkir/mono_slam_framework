@@ -102,6 +102,7 @@ long unsigned int Map::GetMaxKFid() {
 }
 
 void Map::clear() {
+  std::unique_lock<std::mutex> lock(mMutexMap);
   for (std::set<MapPoint *>::iterator sit = mspMapPoints.begin(),
                                       send = mspMapPoints.end();
        sit != send; sit++)

@@ -37,9 +37,6 @@ Frame::Frame(const Frame &frame)
       mTimeStamp(frame.mTimeStamp),
       mnId(frame.mnId),
       mpReferenceKF(frame.mpReferenceKF) {
-  if (!frame.mTcw.empty()) {
-    SetPose(frame.mTcw);
-  }
 }
 
 Frame::Frame(const cv::Mat &imGray, const double &timeStamp, cv::Mat &K)

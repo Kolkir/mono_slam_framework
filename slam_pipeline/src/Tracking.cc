@@ -245,8 +245,8 @@ void Tracking::MonocularInitialization() {
     cv::Mat tcw;                  // Current Camera Translation
     vector<bool> vbTriangulated;  // Triangulated Correspondences (mvIniMatches)
 
-    if (mpInitializer->InitializeOpenCV(mIniMatchResult, Rcw, tcw, mvIniP3D,
-                                  vbTriangulated)) {
+    if (mpInitializer->Initialize(mIniMatchResult, Rcw, tcw, mvIniP3D,
+                                  vbTriangulated, mMinIniMatchCount)) {
       mvIniMatches.resize(mIniMatchResult.GetNumMatches());
       for (size_t i = 0, iend = mvIniMatches.size(); i < iend; i++) {
         if (vbTriangulated[i]) {

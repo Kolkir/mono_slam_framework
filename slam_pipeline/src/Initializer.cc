@@ -39,7 +39,8 @@ Initializer::Initializer(const cv::Mat &K, float sigma, int iterations) {
 bool Initializer::InitializeOpenCV(const MatchFramesResult &matchResult,
                                    cv::Mat &R21, cv::Mat &t21,
                                    std::vector<cv::Point3f> &vP3D,
-                                   std::vector<bool> &vbTriangulated) {
+                                   std::vector<bool> &vbTriangulated,
+                                   int minTriangulaed) {
   mvKeys1.assign(matchResult.keyPoints1.begin(), matchResult.keyPoints1.end());
   mvKeys2.assign(matchResult.keyPoints2.begin(), matchResult.keyPoints2.end());
   vbTriangulated.resize(mvKeys1.size(), false);
@@ -53,7 +54,7 @@ bool Initializer::InitializeOpenCV(const MatchFramesResult &matchResult,
     cv::Mat points3d;
     auto nInliners = cv::recoverPose(E, mvKeys1, mvKeys2, mK, R21, t21,
                                      distanceThresh, inlierMask, points3d);
-    if (nInliners > 15) {
+    if (nInliners > minTriangulaed) {
       for (unsigned i = 0; i < mvKeys1.size(); i++) {
         if (inlierMask.at<uchar>(i)) {
           vbTriangulated[i] = true;
@@ -73,7 +74,8 @@ bool Initializer::InitializeOpenCV(const MatchFramesResult &matchResult,
 
 bool Initializer::Initialize(const MatchFramesResult &matchResult, cv::Mat &R21,
                              cv::Mat &t21, std::vector<cv::Point3f> &vP3D,
-                             std::vector<bool> &vbTriangulated) {
+                             std::vector<bool> &vbTriangulated,
+                             int minTriangulaed) {
   mvKeys1.assign(matchResult.keyPoints1.begin(), matchResult.keyPoints1.end());
   mvKeys2.assign(matchResult.keyPoints2.begin(), matchResult.keyPoints2.end());
   mvMatches12.clear();
@@ -135,15 +137,16 @@ bool Initializer::Initialize(const MatchFramesResult &matchResult, cv::Mat &R21,
   // Compute ratio of scores
   float RH = SH / (SH + SF);
 
-  const float minParallax = static_cast<float>(M_PI / 6.0);  // 15 degrees
+  // static_cast<float>(M_PI / 6.0);  // 15 degrees
+  const float minParallax = 1.0f;
   // Try to reconstruct from homography or fundamental depending on the ratio
   // (0.40-0.45)
   if (RH > 0.40)
     return ReconstructH(vbMatchesInliersH, H, mK, R21, t21, vP3D,
-                        vbTriangulated, minParallax, 50);
+                        vbTriangulated, minParallax, minTriangulaed);
   else  // if(pF_HF>0.6)
     return ReconstructF(vbMatchesInliersF, F, mK, R21, t21, vP3D,
-                        vbTriangulated, minParallax, 50);
+                        vbTriangulated, minParallax, minTriangulaed);
 
   return false;
 }
@@ -726,8 +729,9 @@ bool Initializer::ReconstructH(std::vector<bool> &vbMatchesInliers,
     }
   }
 
-  if (secondBestGood < 0.75 * bestGood && bestParallax >= minParallax &&
-      bestGood > minTriangulated && bestGood > 0.9 * N) {
+  auto minGood = std::min(static_cast<int>(0.9 * N), minTriangulated);
+  if (/*secondBestGood < 0.75 * bestGood && */ bestParallax >= minParallax &&
+      bestGood >= minGood) {
     vR[bestSolutionIdx].copyTo(R21);
     vt[bestSolutionIdx].copyTo(t21);
     vP3D = bestP3D;

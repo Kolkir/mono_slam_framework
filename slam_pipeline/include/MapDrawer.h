@@ -18,11 +18,11 @@
 #pragma clang diagnostic pop
 #endif
 
-#include "slam_pipeline_export.h"
-
+#include <atomic>
 #include <mutex>
 #include <thread>
-#include <atomic>
+
+#include "slam_pipeline_export.h"
 
 namespace SLAM_PIPELINE {
 class Map;
@@ -44,12 +44,13 @@ class SLAM_PIPELINE_EXPORT MapDrawer {
  private:
   void ThreadFunc();
   void CreateViewer();
+
  private:
   Map *mMap{nullptr};
   pcl::visualization::PCLVisualizer::Ptr mViewer;
   pcl::PointCloud<pcl::PointXYZ>::Ptr mPointCloud;
   pcl::PointCloud<pcl::PointXYZ>::Ptr mPointCloudToDraw;
-  std::vector<pcl::PointXYZ> mKeyFramePositions;
+  std::vector<std::pair<pcl::PointXYZ, pcl::PointXYZ>> mKeyFramePositions;
   std::mutex mGuard;
   std::thread mGuiThread;
   std::atomic<bool> mIsStopped{false};
