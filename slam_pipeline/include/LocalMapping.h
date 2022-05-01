@@ -42,8 +42,6 @@ class SLAM_PIPELINE_EXPORT LocalMapping {
 
   void SetLoopCloser(LoopClosing* pLoopCloser);
 
-  void SetTracker(Tracking* pTracker);
-
   // Main function
   void Run();
 
@@ -93,7 +91,6 @@ class SLAM_PIPELINE_EXPORT LocalMapping {
   Map* mpMap;
 
   LoopClosing* mpLoopCloser;
-  Tracking* mpTracker;
 
   std::list<KeyFrame*> mlNewKeyFrames;
 

@@ -48,8 +48,31 @@ struct SLAM_PIPELINE_EXPORT FeatureParameters {
   // camera parameters
   float fx{0}, fy{0}, cx{0}, cy{0};
 
-  //  Max Frames to insert keyframes and to check relocalization
+  //  Max/Min Frames to insert keyframes and to check relocalization
   int maxFrames{10};
+  int minFrames{0};
+
+  // Min required feature matches number for initialization
+  int minIniMatchCount{25};
+
+  // Min required feature matches number for local mapping (check lost)
+  int minLocalMatchCount{15};
+
+  // Min required key frames to perform relocalization
+  int minimumKeyFrames{5};
+
+  // Loop closing parameters
+  bool bFixScale{true};
+  
+  float nCovisibilityConsistencyTh{3};
+
+  // If the map contains less than num KF or less than num KF have passed from
+  // last loop detection then populate key frame database
+  int loopDetectionMaxFrames{5};
+
+  int minSim3Matches{15};
+  int minTotalSim3Matches{30};
+
 };
 
 class SLAM_PIPELINE_EXPORT Tracking {
@@ -91,8 +114,11 @@ class SLAM_PIPELINE_EXPORT Tracking {
   // Current Frame
   std::unique_ptr<Frame> mCurrentFrame;
 
+  // Min required feature matches number for local maping (check lost)
+  int mMinLocalMatchCount{-1};
+
   // Initialization Variables (Monocular)
-  int mMinIniMatchCount{25};
+  int mMinIniMatchCount{-1};
   MatchFramesResult mIniMatchResult;
   std::vector<int> mvIniMatches;
   std::vector<cv::Point3f> mvIniP3D;
@@ -161,8 +187,8 @@ class SLAM_PIPELINE_EXPORT Tracking {
   cv::Mat mK;
 
   // New KeyFrame rules (according to fps)
-  int mMinFrames;
-  int mMaxFrames;
+  int mMinFrames{-1};
+  int mMaxFrames{-1};
 
   // Current matches in frame
   int mnMatchesInliers;

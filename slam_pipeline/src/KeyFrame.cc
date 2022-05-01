@@ -31,16 +31,14 @@ long unsigned int KeyFrame::nNextId = 0;
 
 KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB)
     : FrameBase(F),
-      mnFrameId(F.mnId),
+      mnFrameId(F.id()),
       mTimeStamp(F.mTimeStamp),
       mnTrackReferenceForFrame(0),
       mnFuseTargetForKF(0),
       mnBALocalForKF(0),
       mnBAFixedForKF(0),
       mnLoopQuery(0),
-      mnLoopWords(0),
       mnRelocQuery(0),
-      mnRelocWords(0),
       mnBAGlobalForKF(0),
       mpKeyFrameDB(pKFDB),
       mbFirstConnection(true),
@@ -51,6 +49,8 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB)
       mpMap(pMap) {
   mnId = nNextId++;
 }
+
+long unsigned int KeyFrame::id() const { return mnId; }
 
 void KeyFrame::AddConnection(KeyFrame *pKF, const int &weight) {
   {
@@ -229,7 +229,7 @@ void KeyFrame::UpdateConnections() {
 
     for (auto mit = observations.begin(), mend = observations.end();
          mit != mend; mit++) {
-      if (mit->first->mnId == mnId) continue;
+      if (mit->first->id() == mnId) continue;
       KFcounter[mit->first]++;
     }
   }
@@ -403,7 +403,7 @@ void KeyFrame::SetBadFlag() {
           for (std::set<KeyFrame *>::iterator spcit = sParentCandidates.begin(),
                                               spcend = sParentCandidates.end();
                spcit != spcend; spcit++) {
-            if (vpConnected[i]->mnId == (*spcit)->mnId) {
+            if (vpConnected[i]->id() == (*spcit)->id()) {
               int w = pKF->GetWeight(vpConnected[i]);
               if (w > max) {
                 pC = pKF;

@@ -21,8 +21,6 @@
 #ifndef KEYFRAME_H
 #define KEYFRAME_H
 
-#include "slam_pipeline_export.h"
-
 #include <mutex>
 
 #include "Frame.h"
@@ -30,6 +28,7 @@
 #include "KeyFrameDatabase.h"
 #include "KeyPointMap.h"
 #include "MapPoint.h"
+#include "slam_pipeline_export.h"
 
 namespace SLAM_PIPELINE {
 
@@ -46,6 +45,8 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
 
  public:
   virtual ~KeyFrame() {}
+
+  long unsigned int id() const override;
 
   // Covisibility graph functions
   void AddConnection(KeyFrame* pKF, const int& weight);
@@ -97,14 +98,12 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
   static bool weightComp(int a, int b) { return a > b; }
 
   static bool lId(KeyFrame* pKF1, KeyFrame* pKF2) {
-    return pKF1->mnId < pKF2->mnId;
+    return pKF1->id() < pKF2->id();
   }
 
   // The following variables are accesed from only 1 thread or never change (no
   // mutex needed).
  public:
-  static long unsigned int nNextId;
-  long unsigned int mnId;
   const long unsigned int mnFrameId;
 
   const double mTimeStamp;
@@ -119,10 +118,9 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
 
   // Variables used by the keyframe database
   long unsigned int mnLoopQuery;
-  int mnLoopWords;
   float mLoopScore;
+
   long unsigned int mnRelocQuery;
-  int mnRelocWords;
   float mRelocScore;
 
   // Variables used by loop closing
@@ -135,7 +133,7 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
 
   // The following variables need to be accessed trough a mutex to be thread
   // safe.
- protected:
+ private:
   KeyFrameDatabase* mpKeyFrameDB;
 
   std::map<KeyFrame*, int> mConnectedKeyFrameWeights;
@@ -157,6 +155,9 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
 
   std::mutex mMutexConnections;
   std::mutex mMutexFeatures;
+
+  static long unsigned int nNextId;
+  long unsigned int mnId;
 };
 
 class SLAM_PIPELINE_EXPORT KeyFrameFactory {

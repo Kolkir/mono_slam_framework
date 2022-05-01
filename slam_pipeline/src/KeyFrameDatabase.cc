@@ -27,29 +27,119 @@ void KeyFrameMatchDatabase::erase(KeyFrame* pKF) {
 void KeyFrameMatchDatabase::clear() { mFrames.clear(); }
 
 std::vector<KeyFrame*> KeyFrameMatchDatabase::DetectLoopCandidates(
-    KeyFrame* pKF, float minScore) {
-  return {};
+    KeyFrame* pKF, size_t minNumMatches) {
+  std::set<KeyFrame*> spConnectedKeyFrames = pKF->GetConnectedKeyFrames();
+  std::list<KeyFrame*> lKFsSharingFeatures;
+
+  // Search all keyframes that share features with current keyframes
+  // Discard keyframes connected to the query keyframe
+  for (auto pKFi : mFrames) {
+    auto matchResult = mFeatureMatcher->MatchFrames(pKF, pKFi);
+    auto numMatches = static_cast<int>(matchResult.GetNumMatches());
+    if (numMatches != 0 && pKFi->mnLoopQuery != pKF->id()) {
+      if (!spConnectedKeyFrames.count(pKFi)) {
+        pKFi->mnLoopQuery = pKF->id();
+        pKFi->mLoopScore = static_cast<float>(numMatches);
+        lKFsSharingFeatures.push_back(pKFi);
+      }
+    }
+  }
+
+  if (lKFsSharingFeatures.empty()) return std::vector<KeyFrame*>();
+
+  std::list<std::pair<float, KeyFrame*>> lScoreAndMatch;
+
+  float maxCommonFeatures = 0;
+  for (auto kf : lKFsSharingFeatures) {
+    if (kf->mLoopScore > maxCommonFeatures) maxCommonFeatures = kf->mLoopScore;
+  }
+
+  auto minCommonFeatures = maxCommonFeatures * 0.8f;
+
+  // Retain the matches whose feature matches num is higher than  minNumMatches
+  for (auto pKFi : lKFsSharingFeatures) {
+    if (pKFi->mLoopScore > minNumMatches) {
+      lScoreAndMatch.push_back(std::make_pair(pKFi->mLoopScore, pKFi));
+    }
+  }
+
+  if (lScoreAndMatch.empty()) return std::vector<KeyFrame*>();
+
+  std::list<std::pair<float, KeyFrame*>> lAccScoreAndMatch;
+  float bestAccScore = static_cast<float>(minNumMatches);
+
+  // Lets now accumulate score by covisibility
+  for (std::list<std::pair<float, KeyFrame*>>::iterator
+           it = lScoreAndMatch.begin(),
+           itend = lScoreAndMatch.end();
+       it != itend; it++) {
+    KeyFrame* pKFi = it->second;
+    std::vector<KeyFrame*> vpNeighs = pKFi->GetBestCovisibilityKeyFrames(10);
+
+    float bestScore = it->first;
+    float accScore = it->first;
+    KeyFrame* pBestKF = pKFi;
+    for (std::vector<KeyFrame*>::iterator vit = vpNeighs.begin(),
+                                          vend = vpNeighs.end();
+         vit != vend; vit++) {
+      KeyFrame* pKF2 = *vit;
+      if (pKF2->mnLoopQuery == pKF->id() &&
+          pKF2->mLoopScore > minCommonFeatures) {
+        accScore += pKF2->mLoopScore;
+        if (pKF2->mLoopScore > bestScore) {
+          pBestKF = pKF2;
+          bestScore = pKF2->mLoopScore;
+        }
+      }
+    }
+
+    lAccScoreAndMatch.push_back(std::make_pair(accScore, pBestKF));
+    if (accScore > bestAccScore) bestAccScore = accScore;
+  }
+
+  // Return all those keyframes with a score higher than 0.75*bestScore
+  float minScoreToRetain = 0.75f * bestAccScore;
+
+  std::set<KeyFrame*> spAlreadyAddedKF;
+  std::vector<KeyFrame*> vpLoopCandidates;
+  vpLoopCandidates.reserve(lAccScoreAndMatch.size());
+
+  for (std::list<std::pair<float, KeyFrame*>>::iterator
+           it = lAccScoreAndMatch.begin(),
+           itend = lAccScoreAndMatch.end();
+       it != itend; it++) {
+    if (it->first > minScoreToRetain) {
+      KeyFrame* pKFi = it->second;
+      if (!spAlreadyAddedKF.count(pKFi)) {
+        vpLoopCandidates.push_back(pKFi);
+        spAlreadyAddedKF.insert(pKFi);
+      }
+    }
+  }
+
+  return vpLoopCandidates;
 }
 
 std::vector<KeyFrame*> KeyFrameMatchDatabase::DetectRelocalizationCandidates(
-    Frame* F) {
+    FrameBase* pF) {
   std::vector<std::pair<KeyFrame*, size_t>> frameMatchCounts;
   frameMatchCounts.reserve(mFrames.size() / 3);
-  int maxNumMatches = 0;
+
+  size_t maxNumMatches = 0;
   {
     std::unique_lock<std::mutex> lock(mGuard);
     // calculate number of feature matches for every key frame and frame
     // also search for max number of matches
     for (auto pKFi : mFrames) {
-      auto matchResult = mFeatureMatcher->MatchFrames(F, pKFi);
+      auto matchResult = mFeatureMatcher->MatchFrames(pF, pKFi);
       auto numMatches = static_cast<int>(matchResult.GetNumMatches());
-      pKFi->mnRelocQuery = F->mnId;
+      pKFi->mnRelocQuery = pF->id();
       pKFi->mRelocScore = static_cast<float>(numMatches);
       frameMatchCounts.emplace_back(pKFi, numMatches);
       if (numMatches > maxNumMatches) maxNumMatches = numMatches;
     }
   }
-  int minNumMatches = static_cast<int>(maxNumMatches * 0.8f);
+  auto minNumMatches = static_cast<size_t>(maxNumMatches * 0.8f);
 
   // accumulate num matches by covisibility
   float bestAccNumMatches = 0;
@@ -64,7 +154,7 @@ std::vector<KeyFrame*> KeyFrameMatchDatabase::DetectRelocalizationCandidates(
       float accNumMatches = bestNumMatches;
       KeyFrame* pBestKF = pKFi;
       for (auto pKF2 : vpNeighs) {
-        if (pKF2->mnRelocQuery != F->mnId) {
+        if (pKF2->mnRelocQuery != pF->id()) {
           continue;
         }
 

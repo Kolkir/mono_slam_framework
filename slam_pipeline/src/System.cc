@@ -56,20 +56,17 @@ System::System(FeatureParameters &parameters, FeatureMatcher *featureMatcher,
       new std::thread(&SLAM_PIPELINE::LocalMapping::Run, mpLocalMapper);
 
   // Initialize the Loop Closing thread and launch
-  // mpLoopCloser =
-  //    new LoopClosing(mpMap, mpKeyFrameDatabase, mFeatureMatcher.get(), true);
-  // mptLoopClosing =
-  //    new std::thread(&SLAM_PIPELINE::LoopClosing::Run, mpLoopCloser);
+  mpLoopCloser =
+      new LoopClosing(mpMap, mpKeyFrameDatabase, mFeatureMatcher, parameters);
+  mptLoopClosing =
+      new std::thread(&SLAM_PIPELINE::LoopClosing::Run, mpLoopCloser);
 
   // Set pointers between threads
   mpTracker->SetLocalMapper(mpLocalMapper);
-  // mpTracker->SetLoopClosing(mpLoopCloser);
+  mpTracker->SetLoopClosing(mpLoopCloser);
 
-  mpLocalMapper->SetTracker(mpTracker);
-  // mpLocalMapper->SetLoopCloser(mpLoopCloser);
-
-  // mpLoopCloser->SetTracker(mpTracker);
-  // mpLoopCloser->SetLocalMapper(mpLocalMapper);
+  mpLocalMapper->SetLoopCloser(mpLoopCloser);
+  mpLoopCloser->SetLocalMapper(mpLocalMapper);
 }
 
 void System::TrackMonocular(const cv::Mat &im, const double &timestamp) {

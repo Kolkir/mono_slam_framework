@@ -45,8 +45,6 @@ void LocalMapping::SetLoopCloser(LoopClosing *pLoopCloser) {
   mpLoopCloser = pLoopCloser;
 }
 
-void LocalMapping::SetTracker(Tracking *pTracker) { mpTracker = pTracker; }
-
 void LocalMapping::Run() {
   mbFinished = false;
 
@@ -135,11 +133,9 @@ void LocalMapping::ProcessNewKeyFrame() {
           pMP->AddObservation(mpCurrentKeyFrame,
                               vpMapPointMatches.KeyPointFromIndex(i->first));
           pMP->UpdateNormalAndDepth();
-        } else  // this can only happen for new stereo points inserted by the
-                // Tracking
+        } else  // this can only happen for new points inserted by the
+                // initialization
         {
-          // TODO: investigate
-          // assert(false);  // due to only monocular mode
           mlpRecentAddedMapPoints.push_back(pMP);
         }
       }
@@ -156,7 +152,7 @@ void LocalMapping::ProcessNewKeyFrame() {
 void LocalMapping::MapPointCulling() {
   // Check Recent Added MapPoints
   std::list<MapPoint *>::iterator lit = mlpRecentAddedMapPoints.begin();
-  const unsigned long int nCurrentKFid = mpCurrentKeyFrame->mnId;
+  const unsigned long int nCurrentKFid = mpCurrentKeyFrame->id();
 
   int nThObs = 2;
   const int cnThObs = nThObs;
@@ -332,6 +328,11 @@ void LocalMapping::CreateNewMapPoints() {
     std::cout << "Failed to create new MPs, candidates " << ncandidates
               << std::endl;
   }
+  // show map statistics
+  auto kfNum = mpMap->KeyFramesInMap();
+  std::cout << "KF num " << kfNum << std::endl;
+  auto mapPointsNum = mpMap->MapPointsInMap();
+  std::cout << "MP num " << mapPointsNum << std::endl;
 }
 
 void LocalMapping::SearchInNeighbors() {
@@ -344,10 +345,10 @@ void LocalMapping::SearchInNeighbors() {
                                                vend = vpNeighKFs.end();
        vit != vend; vit++) {
     KeyFrame *pKFi = *vit;
-    if (pKFi->isBad() || pKFi->mnFuseTargetForKF == mpCurrentKeyFrame->mnId)
+    if (pKFi->isBad() || pKFi->mnFuseTargetForKF == mpCurrentKeyFrame->id())
       continue;
     vpTargetKFs.push_back(pKFi);
-    pKFi->mnFuseTargetForKF = mpCurrentKeyFrame->mnId;
+    pKFi->mnFuseTargetForKF = mpCurrentKeyFrame->id();
 
     // Extend to some second neighbors
     const std::vector<KeyFrame *> vpSecondNeighKFs =
@@ -358,8 +359,8 @@ void LocalMapping::SearchInNeighbors() {
          vit2 != vend2; vit2++) {
       KeyFrame *pKFi2 = *vit2;
       if (pKFi2->isBad() ||
-          pKFi2->mnFuseTargetForKF == mpCurrentKeyFrame->mnId ||
-          pKFi2->mnId == mpCurrentKeyFrame->mnId)
+          pKFi2->mnFuseTargetForKF == mpCurrentKeyFrame->id() ||
+          pKFi2->id() == mpCurrentKeyFrame->id())
         continue;
       vpTargetKFs.push_back(pKFi2);
     }
@@ -483,7 +484,7 @@ void LocalMapping::KeyFrameCulling() {
                                          vend = vpLocalKeyFrames.end();
        vit != vend; vit++) {
     KeyFrame *pKF = *vit;
-    if (pKF->mnId == 0) continue;
+    if (pKF->id() == 0) continue;
     auto vpMapPoints = pKF->GetMapPointMatches();
 
     const int thObs = 3;

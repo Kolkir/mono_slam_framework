@@ -30,7 +30,8 @@
 namespace SLAM_PIPELINE {
 
 LoopClosing::LoopClosing(Map* pMap, KeyFrameDatabase* pDB,
-                         FeatureMatcher* featureMatcher, const bool bFixScale)
+                         FeatureMatcher* featureMatcher,
+                         const FeatureParameters& parameters)
     : mbResetRequested(false),
       mbFinishRequested(false),
       mbFinished(true),
@@ -42,13 +43,14 @@ LoopClosing::LoopClosing(Map* pMap, KeyFrameDatabase* pDB,
       mbFinishedGBA(true),
       mbStopGBA(false),
       mpThreadGBA(NULL),
-      mbFixScale(bFixScale),
       mnFullBAIdx(false),
       mFeatureMatcher(featureMatcher) {
-  mnCovisibilityConsistencyTh = 3;
+  mbFixScale = parameters.bFixScale;
+  mnCovisibilityConsistencyTh = parameters.nCovisibilityConsistencyTh;
+  mLoopDetectionMaxFrames = parameters.loopDetectionMaxFrames;
+  mMinSim3Matches = parameters.minSim3Matches;
+  mMinTotalSim3Matches = parameters.minTotalSim3Matches;
 }
-
-void LoopClosing::SetTracker(Tracking* pTracker) { mpTracker = pTracker; }
 
 void LoopClosing::SetLocalMapper(LocalMapping* pLocalMapper) {
   mpLocalMapper = pLocalMapper;
@@ -83,7 +85,7 @@ void LoopClosing::Run() {
 
 void LoopClosing::InsertKeyFrame(KeyFrame* pKF) {
   std::unique_lock<std::mutex> lock(mMutexLoopQueue);
-  if (pKF->mnId != 0) mlpLoopKeyFrameQueue.push_back(pKF);
+  if (pKF->id() != 0) mlpLoopKeyFrameQueue.push_back(pKF);
 }
 
 bool LoopClosing::CheckNewKeyFrames() {
@@ -103,22 +105,23 @@ bool LoopClosing::DetectLoop() {
 
   // If the map contains less than 10 KF or less than 10 KF have passed from
   // last loop detection
-  if (mpCurrentKF->mnId < mLastLoopKFid + 10) {
+  if (mpCurrentKF->id() < mLastLoopKFid + mLoopDetectionMaxFrames) {
     mpKeyFrameDB->add(mpCurrentKF);
     mpCurrentKF->SetErase();
     return false;
   }
 
-  // Compute reference BoW similarity score
+  // Compute reference similarity score
   // This is the lowest score to a connected keyframe in the covisibility graph
   // We will impose loop candidates to have a higher similarity than this
   const std::vector<KeyFrame*> vpConnectedKeyFrames =
       mpCurrentKF->GetVectorCovisibleKeyFrames();
-  float minScore = 1;
+  size_t minScore = 1;
   for (size_t i = 0; i < vpConnectedKeyFrames.size(); i++) {
     KeyFrame* pKF = vpConnectedKeyFrames[i];
     if (pKF->isBad()) continue;
-    float score = mFeatureMatcher->ScoreFrames(mpCurrentKF, pKF);
+    auto matchResult = mFeatureMatcher->MatchFrames(mpCurrentKF, pKF);
+    auto score = matchResult.GetNumMatches();
     if (score < minScore) minScore = score;
   }
 
@@ -212,7 +215,7 @@ bool LoopClosing::DetectLoop() {
 bool LoopClosing::ComputeSim3() {
   // For each consistent loop candidate we try to compute a Sim3
 
-  const int nInitialCandidates = mvpEnoughConsistentCandidates.size();
+  const auto nInitialCandidates = mvpEnoughConsistentCandidates.size();
 
   // We compute first matches for each candidate
   // If enough matches are found, we setup a Sim3Solver
@@ -241,9 +244,9 @@ bool LoopClosing::ComputeSim3() {
     }
 
     vvpMapPointMatches[i] = mFeatureMatcher->MatchFrames(mpCurrentKF, pKF);
-    int nmatches = vvpMapPointMatches[i].GetNumMatches();
+    auto nmatches = vvpMapPointMatches[i].GetNumMatches();
 
-    if (nmatches < 20) {
+    if (nmatches < mMinSim3Matches) {
       vbDiscarded[i] = true;
       continue;
     } else {
@@ -266,11 +269,14 @@ bool LoopClosing::ComputeSim3() {
 
       // Perform 5 Ransac Iterations
       std::vector<bool> vbInliers;
-      int nInliers;
-      bool bNoMore;
+      bool bNoMore = false;
+      cv::Mat Scm;
 
       Sim3Solver* pSolver = vpSim3Solvers[i];
-      cv::Mat Scm = pSolver->iterate(5, bNoMore, vbInliers, nInliers);
+      {
+        int nInliers;
+        Scm = pSolver->iterate(5, bNoMore, vbInliers, nInliers);
+      }
 
       // If Ransac reachs max. iterations discard keyframe
       if (bNoMore) {
@@ -291,16 +297,12 @@ bool LoopClosing::ComputeSim3() {
         cv::Mat R = pSolver->GetEstimatedRotation();
         cv::Mat t = pSolver->GetEstimatedTranslation();
         const float s = pSolver->GetEstimatedScale();
-        // search new matches ignoring ones that was already matched with
-        // Sim3Solver
-        mFeatureMatcher->SearchBySim3(vpMapPointMatches, s, R, t, 7.5);
-
         g2o::Sim3 gScm(Converter::toMatrix3d(R), Converter::toVector3d(t), s);
         const int nInliers =
             Optimizer::OptimizeSim3(vpMapPointMatches, gScm, 10, mbFixScale);
 
         // If optimization is succesful stop ransacs and continue
-        if (nInliers >= 20) {
+        if (nInliers >= mMinSim3Matches) {
           bMatch = true;
           mpMatchedKF = mvpEnoughConsistentCandidates[i];
           g2o::Sim3 gSmw(Converter::toMatrix3d(mpMatchedKF->GetRotation()),
@@ -323,37 +325,10 @@ bool LoopClosing::ComputeSim3() {
     return false;
   }
 
-  // Retrieve MapPoints seen in Loop Keyframe and neighbors
-  std::vector<KeyFrame*> vpLoopConnectedKFs =
-      mpMatchedKF->GetVectorCovisibleKeyFrames();
-  vpLoopConnectedKFs.push_back(mpMatchedKF);
-  mvpLoopMapPoints =
-      KeyPointMap(mpCurrentKF->imGray.cols, mpCurrentKF->imGray.rows);
-  for (std::vector<KeyFrame*>::iterator vit = vpLoopConnectedKFs.begin();
-       vit != vpLoopConnectedKFs.end(); vit++) {
-    KeyFrame* pKF = *vit;
-    auto vpMapPoints = pKF->GetMapPointMatches();
-    for (auto i = vpMapPoints.Begin(), iend = vpMapPoints.End(); i != iend;
-         ++i) {
-      MapPoint* pMP = i->second.mapPoint;
-      if (pMP) {
-        if (!pMP->isBad() && pMP->mnLoopPointForKF != mpCurrentKF->mnId) {
-          mvpLoopMapPoints.SetMapPoint(vpMapPoints.KeyPointFromIndex(i->first),
-                                       pMP);
-          pMP->mnLoopPointForKF = mpCurrentKF->mnId;
-        }
-      }
-    }
-  }
-
-  // Find more matches projecting with the computed Sim3
-  mFeatureMatcher->SearchByProjection(mpCurrentKF, mScw, mvpLoopMapPoints,
-                                      mvpCurrentMatchedPoints, 10);
-
   // If enough matches accept Loop
   auto nTotalMatches = mvpCurrentMatchedPoints.GetNumMatches();
 
-  if (nTotalMatches >= 40) {
+  if (nTotalMatches >= mMinTotalSim3Matches) {
     for (int i = 0; i < nInitialCandidates; i++)
       if (mvpEnoughConsistentCandidates[i] != mpMatchedKF)
         mvpEnoughConsistentCandidates[i]->SetErase();
@@ -450,7 +425,7 @@ void LoopClosing::CorrectLoop() {
         MapPoint* pMPi = iMP->second.mapPoint;
         if (!pMPi) continue;
         if (pMPi->isBad()) continue;
-        if (pMPi->mnCorrectedByKF == mpCurrentKF->mnId) continue;
+        if (pMPi->mnCorrectedByKF == mpCurrentKF->id()) continue;
 
         // Project with non-corrected pose and project back with corrected pose
         cv::Mat P3Dw = pMPi->GetWorldPos();
@@ -460,8 +435,8 @@ void LoopClosing::CorrectLoop() {
 
         cv::Mat cvCorrectedP3Dw = Converter::toCvMat(eigCorrectedP3Dw);
         pMPi->SetWorldPos(cvCorrectedP3Dw);
-        pMPi->mnCorrectedByKF = mpCurrentKF->mnId;
-        pMPi->mnCorrectedReference = pKFi->mnId;
+        pMPi->mnCorrectedByKF = mpCurrentKF->id();
+        pMPi->mnCorrectedReference = pKFi->id();
         pMPi->UpdateNormalAndDepth();
       }
 
@@ -480,61 +455,7 @@ void LoopClosing::CorrectLoop() {
       // Make sure connections are updated
       pKFi->UpdateConnections();
     }
-
-    // Start Loop Fusion
-    // Update matched map points and replace if duplicated
-    for (size_t i = 0; i < mvpCurrentMatchedPoints.GetNumMatches(); i++) {
-      MapPoint* pLoopMP = mvpCurrentMatchedPoints.GetMapPoint2(i);
-      MapPoint* pCurMP = mvpCurrentMatchedPoints.GetMapPoint1(i);
-      if (pCurMP)
-        pCurMP->Replace(pLoopMP);
-      else {
-        mpCurrentKF->AddMapPoint(pLoopMP,
-                                 mvpCurrentMatchedPoints.keyPoints1[i]);
-        pLoopMP->AddObservation(mpCurrentKF,
-                                mvpCurrentMatchedPoints.keyPoints1[i]);
-      }
-    }
   }
-
-  // Project MapPoints observed in the neighborhood of the loop keyframe
-  // into the current keyframe and neighbors using corrected poses.
-  // Fuse duplications.
-  SearchAndFuse(CorrectedSim3);
-
-  // After the MapPoint fusion, new links in the covisibility graph will appear
-  // attaching both sides of the loop
-  std::map<KeyFrame*, std::set<KeyFrame*> > LoopConnections;
-
-  for (std::vector<KeyFrame*>::iterator vit = mvpCurrentConnectedKFs.begin(),
-                                        vend = mvpCurrentConnectedKFs.end();
-       vit != vend; vit++) {
-    KeyFrame* pKFi = *vit;
-    std::vector<KeyFrame*> vpPreviousNeighbors =
-        pKFi->GetVectorCovisibleKeyFrames();
-
-    // Update connections. Detect new links.
-    pKFi->UpdateConnections();
-    LoopConnections[pKFi] = pKFi->GetConnectedKeyFrames();
-    for (std::vector<KeyFrame*>::iterator
-             vit_prev = vpPreviousNeighbors.begin(),
-             vend_prev = vpPreviousNeighbors.end();
-         vit_prev != vend_prev; vit_prev++) {
-      LoopConnections[pKFi].erase(*vit_prev);
-    }
-    for (std::vector<KeyFrame*>::iterator vit2 = mvpCurrentConnectedKFs.begin(),
-                                          vend2 = mvpCurrentConnectedKFs.end();
-         vit2 != vend2; vit2++) {
-      LoopConnections[pKFi].erase(*vit2);
-    }
-  }
-
-  // Optimize graph
-  Optimizer::OptimizeEssentialGraph(mpMap, mpMatchedKF, mpCurrentKF,
-                                    NonCorrectedSim3, CorrectedSim3,
-                                    LoopConnections, mbFixScale);
-
-  mpMap->InformNewBigChange();
 
   // Add loop edge
   mpMatchedKF->AddLoopEdge(mpCurrentKF);
@@ -545,40 +466,12 @@ void LoopClosing::CorrectLoop() {
   mbFinishedGBA = false;
   mbStopGBA = false;
   mpThreadGBA = new std::thread(&LoopClosing::RunGlobalBundleAdjustment, this,
-                                mpCurrentKF->mnId);
+                                mpCurrentKF->id());
 
   // Loop closed. Release Local Mapping.
   mpLocalMapper->Release();
 
-  mLastLoopKFid = mpCurrentKF->mnId;
-}
-
-void LoopClosing::SearchAndFuse(const KeyFrameAndPose& CorrectedPosesMap) {
-  for (KeyFrameAndPose::const_iterator mit = CorrectedPosesMap.begin(),
-                                       mend = CorrectedPosesMap.end();
-       mit != mend; mit++) {
-    KeyFrame* pKF = mit->first;
-
-    g2o::Sim3 g2oScw = mit->second;
-    cv::Mat cvScw = Converter::toCvMat(g2oScw);
-
-    KeyPointMap vpReplacePoints(mvpLoopMapPoints.GetCols(),
-                                mvpLoopMapPoints.GetRows());
-    mFeatureMatcher->Fuse(pKF, cvScw, mvpLoopMapPoints, 4, vpReplacePoints);
-
-    // Get Map std::mutex
-    std::unique_lock<std::mutex> lock(mpMap->mMutexMapUpdate);
-    const int nLP = mvpLoopMapPoints.GetCols();
-    for (int i = 0; i < vpReplacePoints.GetRows(); i++) {
-      for (int j = 0; j < vpReplacePoints.GetCols(); j++) {
-        MapPoint* pRep = vpReplacePoints.GetMapPoint(cv::Point2i(j, i));
-        MapPoint* pLoop = mvpLoopMapPoints.GetMapPoint(cv::Point2i(j, i));
-        if (pRep && pLoop) {
-          pRep->Replace(pLoop);
-        }
-      }
-    }
-  }
+  mLastLoopKFid = mpCurrentKF->id();
 }
 
 void LoopClosing::RequestReset() {
@@ -617,7 +510,7 @@ void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF) {
   // the updated map. We need to propagate the correction through the spanning
   // tree
   {
-    std::unique_lock<std::mutex> lock(mMutexGBA);
+    std::unique_lock<std::mutex> gbaLock(mMutexGBA);
     if (idx != mnFullBAIdx) return;
 
     if (!mbStopGBA) {
@@ -631,7 +524,7 @@ void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF) {
       }
 
       // Get Map std::mutex
-      std::unique_lock<std::mutex> lock(mpMap->mMutexMapUpdate);
+      std::unique_lock<std::mutex> mapLock(mpMap->mMutexMapUpdate);
 
       // Correct keyframes starting at map first keyframe
       std::list<KeyFrame*> lpKFtoCheck(mpMap->mvpKeyFrameOrigins.begin(),

@@ -61,10 +61,7 @@ typedef std::map<
 
 class LoopClosing {
  public:
-  LoopClosing(Map* pMap, KeyFrameDatabase* pDB, FeatureMatcher* featureMatcher,
-              const bool bFixScale);
-
-  void SetTracker(Tracking* pTracker);
+  LoopClosing(Map* pMap, KeyFrameDatabase* pDB, FeatureMatcher* featureMatcher, const FeatureParameters& parameters);
 
   void SetLocalMapper(LocalMapping* pLocalMapper);
 
@@ -100,8 +97,6 @@ class LoopClosing {
 
   bool ComputeSim3();
 
-  void SearchAndFuse(const KeyFrameAndPose& CorrectedPosesMap);
-
   void CorrectLoop();
 
   void ResetIfRequested();
@@ -115,7 +110,6 @@ class LoopClosing {
   std::mutex mMutexFinish;
 
   Map* mpMap;
-  Tracking* mpTracker;
 
   KeyFrameDatabase* mpKeyFrameDB;
 
@@ -150,6 +144,10 @@ class LoopClosing {
 
   // Fix scale in the stereo/RGB-D case
   bool mbFixScale;
+
+  int mLoopDetectionMaxFrames{10};
+  int mMinSim3Matches{20};
+  int mMinTotalSim3Matches{40};
 
   bool mnFullBAIdx;
 

@@ -36,7 +36,7 @@ class SLAM_PIPELINE_EXPORT MapDrawer {
   // Update points from the last processed frame.
   void Update();
 
-  void SetPos(float x, float y, float z);
+  void SetPosDir(float x, float y, float z, float dx, float dy, float dz);
 
   void Start();
   void Stop();
@@ -55,9 +55,8 @@ class SLAM_PIPELINE_EXPORT MapDrawer {
   std::thread mGuiThread;
   std::atomic<bool> mIsStopped{false};
   bool mIsCloudUpdated{false};
-  float m_curX{0};
-  float m_curY{0};
-  float m_curZ{0};
+  pcl::PointXYZ m_curPos;
+  pcl::PointXYZ m_curDir;
 };
 
 }  // namespace SLAM_PIPELINE

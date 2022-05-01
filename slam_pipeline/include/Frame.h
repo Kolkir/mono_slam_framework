@@ -21,8 +21,6 @@
 #ifndef FRAME_H
 #define FRAME_H
 
-#include "slam_pipeline_export.h"
-
 #include <opencv2/opencv.hpp>
 #include <vector>
 
@@ -30,6 +28,7 @@
 #include "KeyFrame.h"
 #include "KeyPointMap.h"
 #include "MapPoint.h"
+#include "slam_pipeline_export.h"
 
 namespace SLAM_PIPELINE {
 class MapPoint;
@@ -50,6 +49,8 @@ class SLAM_PIPELINE_EXPORT Frame : public FrameBase {
 
   virtual ~Frame() {}
 
+  long unsigned int id() const override;
+
   // Check if a MapPoint is in the frustum of the camera
   // and fill variables of the MapPoint to be used by the tracking
   bool isInFrustum(MapPoint *pMP, float viewingCosLimit);
@@ -58,12 +59,13 @@ class SLAM_PIPELINE_EXPORT Frame : public FrameBase {
   // Frame timestamp.
   double mTimeStamp;
 
+  // Reference Keyframe.
+  KeyFrame *mpReferenceKF;
+
+ private:
   // Current and Next Frame id.
   static long unsigned int nNextId;
   long unsigned int mnId;
-
-  // Reference Keyframe.
-  KeyFrame *mpReferenceKF;
 };
 
 class SLAM_PIPELINE_EXPORT FrameFactory {

@@ -18,10 +18,10 @@ using namespace webots;
 int main(int /*argc*/, char** /*argv*/) {
   namespace slam = SLAM_PIPELINE;
 
-  // for (;;) {
+  //for (;;) {
   //  std::this_thread::sleep_for(std::chrono::milliseconds(100));
   //}
-  // cv::ocl::setUseOpenCL(false);
+  cv::ocl::setUseOpenCL(false);
 
   int width = 640;
   int height = 480;

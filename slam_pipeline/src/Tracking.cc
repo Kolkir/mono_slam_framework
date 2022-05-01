@@ -64,8 +64,13 @@ Tracking::Tracking(System* pSys, MapDrawer* pMapDrawer, Map* pMap,
   K.copyTo(mK);
 
   // Max/Min Frames to insert keyframes and to check relocalization
-  mMinFrames = 0;
+  mMinFrames = parameters.minFrames;
   mMaxFrames = parameters.maxFrames;
+
+  mMinLocalMatchCount = parameters.minLocalMatchCount;
+  mMinIniMatchCount = parameters.minIniMatchCount;
+
+  mnMinimumKeyFrames = parameters.minimumKeyFrames;
 
   cout << endl << "Camera Parameters: " << endl;
   cout << "- fx: " << parameters.fx << endl;
@@ -120,7 +125,7 @@ void Tracking::Track() {
       // Local Mapping might have changed some MapPoints tracked in last frame
       CheckReplacedInLastFrame();
 
-      if (mVelocity.empty() || mCurrentFrame->mnId < mnLastRelocFrameId + 2) {
+      if (mVelocity.empty() || mCurrentFrame->id() < mnLastRelocFrameId + 2) {
         bOK = TrackReferenceKeyFrame();
       } else {
         bOK = TrackWithMotionModel();
@@ -175,19 +180,15 @@ void Tracking::Track() {
     // Update drawer
     if (mState == OK) {
       mpMapDrawer->Update();
-      auto pos = mCurrentFrame->GetTranslation();
-      mpMapDrawer->SetPos(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
-      // std::cout << "F pos x = " << pos.at<float>(0) << " y = " <<
-      // pos.at<float>(1)
-      //          << " z = " << pos.at<float>(2) << std::endl;
+      auto pos = mCurrentFrame->GetCameraCenter();
+      cv::Mat dir = cv::Mat::zeros(3, 1, CV_32F);
+      dir.at<float>(2) = 1;
+      dir = mCurrentFrame->GetRotationInverse() * dir;
+      dir = dir / cv::norm(dir);
+      mpMapDrawer->SetPosDir(pos.at<float>(0), pos.at<float>(1),
+                             pos.at<float>(2), dir.at<float>(0),
+                             dir.at<float>(1), dir.at<float>(2));
     }
-
-    // show map statistics
-    auto kfNum = mpMap->KeyFramesInMap();
-    std::cout << "KF " << kfNum << std::endl;
-    auto goodBadPointsNum = mpMap->GoodBadMapPointsInMap();
-    std::cout << "Good MP " << goodBadPointsNum.first << " Bad MP "
-              << goodBadPointsNum.second << std::endl;
 
     if (!mCurrentFrame->mpReferenceKF)
       mCurrentFrame->mpReferenceKF = mpReferenceKF;
@@ -345,7 +346,7 @@ void Tracking::CreateInitialMapMonocular() {
   mpLocalMapper->InsertKeyFrame(pKFcur);
 
   mCurrentFrame->SetPose(pKFcur->GetPose());
-  mnLastKeyFrameId = mCurrentFrame->mnId;
+  mnLastKeyFrameId = mCurrentFrame->id();
   mpLastKeyFrame = pKFcur;
 
   mvpLocalKeyFrames.push_back(pKFcur);
@@ -382,7 +383,7 @@ bool Tracking::TrackReferenceKeyFrame() {
 
   auto nmatches = matchResult.GetNumMatches();
 
-  if (nmatches < 15) {
+  if (nmatches < mMinLocalMatchCount) {
     return false;
   }
 
@@ -406,7 +407,7 @@ bool Tracking::TrackReferenceKeyFrame() {
     if (i->second.outlier) {
       MapPoint* pMP = i->second.mapPoint;
       pointsToRemove.push_back(i->first);
-      pMP->mnLastFrameSeen = mCurrentFrame->mnId;
+      pMP->mnLastFrameSeen = mCurrentFrame->id();
       nmatches--;
     } else if (i->second.mapPoint->Observations() > 0) {
       nmatchesMap++;
@@ -442,7 +443,7 @@ bool Tracking::TrackWithMotionModel() {
 
   auto nmatches = matchResult.GetNumMatches();
 
-  if (nmatches < 20) {
+  if (nmatches < mMinLocalMatchCount) {
     return false;
   }
 
@@ -466,7 +467,7 @@ bool Tracking::TrackWithMotionModel() {
     if (i->second.outlier) {
       MapPoint* pMP = i->second.mapPoint;
       pointsToRemove.push_back(i->first);
-      pMP->mnLastFrameSeen = mCurrentFrame->mnId;
+      pMP->mnLastFrameSeen = mCurrentFrame->id();
       nmatches--;
     } else if (i->second.mapPoint->Observations() > 0) {
       nmatchesMap++;
@@ -502,12 +503,7 @@ bool Tracking::TrackLocalMap() {
   }
 
   // Decide if the tracking was succesful
-  // More restrictive if there was a relocalization recently
-  if (mCurrentFrame->mnId < mnLastRelocFrameId + mMaxFrames &&
-      mnMatchesInliers < 50)
-    return false;
-
-  if (mnMatchesInliers < 30)
+  if (mnMatchesInliers < mMinLocalMatchCount)
     return false;
   else
     return true;
@@ -522,7 +518,7 @@ bool Tracking::NeedNewKeyFrame() {
 
   // Do not insert keyframes if not enough frames have passed from last
   // relocalisation
-  if (mCurrentFrame->mnId < mnLastRelocFrameId + mMaxFrames &&
+  if (mCurrentFrame->id() < mnLastRelocFrameId + mMaxFrames &&
       nKFs > mMaxFrames)
     return false;
 
@@ -539,15 +535,15 @@ bool Tracking::NeedNewKeyFrame() {
 
   // Condition 1a: More than "MaxFrames" have passed from last keyframe
   // insertion
-  const bool c1a = mCurrentFrame->mnId >= mnLastKeyFrameId + mMaxFrames;
+  const bool c1a = mCurrentFrame->id() >= mnLastKeyFrameId + mMaxFrames;
   // Condition 1b: More than "MinFrames" have passed and Local Mapping is idle
-  const bool c1b = (mCurrentFrame->mnId >= mnLastKeyFrameId + mMinFrames &&
+  const bool c1b = (mCurrentFrame->id() >= mnLastKeyFrameId + mMinFrames &&
                     bLocalMappingIdle);
 
   // Few tracked points compared to reference keyframe. Lots of
   // visual odometry compared to map matches.
-  const bool c2 =
-      ((mnMatchesInliers < nRefMatches * thRefRatio) && mnMatchesInliers > 15);
+  const bool c2 = ((mnMatchesInliers < nRefMatches * thRefRatio) &&
+                   mnMatchesInliers > mMinLocalMatchCount);
 
   if ((c1a || c1b) && c2) {
     // If the mapping accepts keyframes, insert keyframe.
@@ -576,7 +572,7 @@ void Tracking::CreateNewKeyFrame() {
 
   mpLocalMapper->SetNotStop(false);
 
-  mnLastKeyFrameId = mCurrentFrame->mnId;
+  mnLastKeyFrameId = mCurrentFrame->id();
   mpLastKeyFrame = pKF;
 }
 
@@ -592,7 +588,7 @@ void Tracking::SearchLocalPoints() {
         pointsToRemove.push_back(vit->first);
       } else {
         pMP->IncreaseVisible();
-        pMP->mnLastFrameSeen = mCurrentFrame->mnId;
+        pMP->mnLastFrameSeen = mCurrentFrame->id();
       }
     }
   }
@@ -614,10 +610,10 @@ void Tracking::SearchLocalPoints() {
          ++itMP) {
       MapPoint* pMP = itMP->second.mapPoint;
       if (!pMP) continue;
-      if (pMP->mnTrackReferenceForFrame == mCurrentFrame->mnId) continue;
+      if (pMP->mnTrackReferenceForFrame == mCurrentFrame->id()) continue;
       if (!pMP->isBad()) {
-        pMP->mnTrackReferenceForFrame = mCurrentFrame->mnId;
-        if (pMP->mnLastFrameSeen != mCurrentFrame->mnId) {
+        pMP->mnTrackReferenceForFrame = mCurrentFrame->id();
+        if (pMP->mnLastFrameSeen != mCurrentFrame->id()) {
           // Project (this fills MapPoint variables for matching)
           if (mCurrentFrame->isInFrustum(pMP, 0.5)) {
             pMP->IncreaseVisible();
@@ -630,10 +626,12 @@ void Tracking::SearchLocalPoints() {
     if (nToMatch > 0) {
       auto matchResult = mFeatureMatcher->MatchFrames(mCurrentFrame.get(), pKF);
       for (size_t i = 0; i < matchResult.keyPoints1.size(); ++i) {
-        auto mp = matchResult.GetMapPoint2(i);
-        if (mp) {
+        auto pMP1 = matchResult.GetMapPoint1(i);
+        auto pMP2 = matchResult.GetMapPoint2(i);
+        // add new found points
+        if (!pMP1 && pMP2) {
           mCurrentFrame->mKeyPointMap.SetMapPoint(matchResult.keyPoints1[i],
-                                                  mp);
+                                                  pMP2);
         }
       }
     }
@@ -685,7 +683,7 @@ void Tracking::UpdateLocalKeyFrames() {
     }
 
     mvpLocalKeyFrames.push_back(it->first);
-    pKF->mnTrackReferenceForFrame = mCurrentFrame->mnId;
+    pKF->mnTrackReferenceForFrame = mCurrentFrame->id();
   }
 
   // Include also some not-already-included keyframes that are neighbors to
@@ -705,9 +703,9 @@ void Tracking::UpdateLocalKeyFrames() {
          itNeighKF != itEndNeighKF; itNeighKF++) {
       KeyFrame* pNeighKF = *itNeighKF;
       if (!pNeighKF->isBad()) {
-        if (pNeighKF->mnTrackReferenceForFrame != mCurrentFrame->mnId) {
+        if (pNeighKF->mnTrackReferenceForFrame != mCurrentFrame->id()) {
           mvpLocalKeyFrames.push_back(pNeighKF);
-          pNeighKF->mnTrackReferenceForFrame = mCurrentFrame->mnId;
+          pNeighKF->mnTrackReferenceForFrame = mCurrentFrame->id();
           break;
         }
       }
@@ -719,9 +717,9 @@ void Tracking::UpdateLocalKeyFrames() {
          sit != send; sit++) {
       KeyFrame* pChildKF = *sit;
       if (!pChildKF->isBad()) {
-        if (pChildKF->mnTrackReferenceForFrame != mCurrentFrame->mnId) {
+        if (pChildKF->mnTrackReferenceForFrame != mCurrentFrame->id()) {
           mvpLocalKeyFrames.push_back(pChildKF);
-          pChildKF->mnTrackReferenceForFrame = mCurrentFrame->mnId;
+          pChildKF->mnTrackReferenceForFrame = mCurrentFrame->id();
           break;
         }
       }
@@ -729,9 +727,9 @@ void Tracking::UpdateLocalKeyFrames() {
 
     KeyFrame* pParent = pKF->GetParent();
     if (pParent) {
-      if (pParent->mnTrackReferenceForFrame != mCurrentFrame->mnId) {
+      if (pParent->mnTrackReferenceForFrame != mCurrentFrame->id()) {
         mvpLocalKeyFrames.push_back(pParent);
-        pParent->mnTrackReferenceForFrame = mCurrentFrame->mnId;
+        pParent->mnTrackReferenceForFrame = mCurrentFrame->id();
         break;
       }
     }
@@ -776,7 +774,7 @@ bool Tracking::Relocalization() {
       vvpMapPointMatches[i] =
           mFeatureMatcher->MatchFrames(mCurrentFrame.get(), pKF);
       auto nmatches = vvpMapPointMatches[i].GetNumMatches();
-      if (nmatches < 15) {
+      if (nmatches < mMinLocalMatchCount) {
         vbDiscarded[i] = true;
         continue;
       } else {
@@ -849,7 +847,7 @@ bool Tracking::Relocalization() {
         }
 
         // If the pose is supported by enough inliers stop ransacs and continue
-        if (nGood >= 50) {
+        if (nGood >= mMinLocalMatchCount) {
           bMatch = true;
           break;
         }
@@ -863,7 +861,7 @@ bool Tracking::Relocalization() {
     mCurrentFrame->mTcw = cv::Mat::zeros(0, 0, CV_32F);
     return false;
   } else {
-    mnLastRelocFrameId = mCurrentFrame->mnId;
+    mnLastRelocFrameId = mCurrentFrame->id();
     return true;
   }
 }
@@ -889,8 +887,6 @@ void Tracking::Reset() {
   // Clear Map (this erase MapPoints and KeyFrames)
   mpMap->clear();
 
-  KeyFrame::nNextId = 0;
-  Frame::nNextId = 0;
   mState = NO_IMAGES_YET;
 
   mpInitializer.reset();

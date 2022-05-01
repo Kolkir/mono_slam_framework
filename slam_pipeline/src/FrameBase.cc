@@ -80,12 +80,12 @@ cv::Mat FrameBase::GetCameraCenter() {
 
 cv::Mat FrameBase::GetRotation() {
   std::unique_lock<std::mutex> lock(mMutexPose);
-  return mTcw.rowRange(0, 3).colRange(0, 3).clone();
+  return mRcw.clone();
 }
 
 cv::Mat FrameBase::GetTranslation() {
   std::unique_lock<std::mutex> lock(mMutexPose);
-  return mTcw.rowRange(0, 3).col(3).clone();
+  return mtcw.clone();
 }
 
 cv::Mat FrameBase::GetRotationInverse() {

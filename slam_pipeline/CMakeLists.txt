@@ -46,7 +46,7 @@ set(INCLUDES
 include/System.h
 include/Tracking.h
 include/LocalMapping.h
-# include/LoopClosing.h
+include/LoopClosing.h
 include/FeatureMatcher.h
 include/MapDrawer.h
 include/Converter.h
@@ -69,7 +69,7 @@ src/FeatureMatcher.cc
 src/System.cc
 src/Tracking.cc
 src/LocalMapping.cc
-# src/LoopClosing.cc
+src/LoopClosing.cc
 src/MapDrawer.cc
 src/Converter.cc
 src/MapPoint.cc

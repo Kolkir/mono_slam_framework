@@ -17,6 +17,8 @@ class SLAM_PIPELINE_EXPORT FrameBase {
   FrameBase(const FrameBase &frame);
   FrameBase &operator=(const FrameBase &frame);
 
+  virtual long unsigned int id() const = 0;
+
   float fx() const;
   float fy() const;
   float cx() const;

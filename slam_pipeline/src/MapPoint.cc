@@ -30,7 +30,7 @@ long unsigned int MapPoint::nNextId = 0;
 std::mutex MapPoint::mGlobalMutex;
 
 MapPoint::MapPoint(const cv::Mat& Pos, KeyFrame* pRefKF, Map* pMap)
-    : mnFirstKFid(pRefKF->mnId),
+    : mnFirstKFid(pRefKF->id()),
       mnFirstFrame(pRefKF->mnFrameId),
       nObs(0),
       mnTrackReferenceForFrame(0),
@@ -59,7 +59,7 @@ MapPoint::MapPoint(const cv::Mat& Pos, KeyFrame* pRefKF, Map* pMap)
 
 MapPoint::MapPoint(const cv::Mat& Pos, Map* pMap, Frame* pFrame)
     : mnFirstKFid(-1),
-      mnFirstFrame(pFrame->mnId),
+      mnFirstFrame(pFrame->id()),
       nObs(0),
       mnTrackReferenceForFrame(0),
       mnLastFrameSeen(0),

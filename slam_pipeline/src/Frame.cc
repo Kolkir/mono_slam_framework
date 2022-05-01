@@ -36,14 +36,15 @@ Frame::Frame(const Frame &frame)
     : FrameBase(frame),
       mTimeStamp(frame.mTimeStamp),
       mnId(frame.mnId),
-      mpReferenceKF(frame.mpReferenceKF) {
-}
+      mpReferenceKF(frame.mpReferenceKF) {}
 
 Frame::Frame(const cv::Mat &imGray, const double &timeStamp, cv::Mat &K)
     : FrameBase(imGray, K), mTimeStamp(timeStamp) {
   // Frame ID
   mnId = nNextId++;
 }
+
+long unsigned int Frame::id() const { return mnId; }
 
 bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit) {
   // 3D in absolute coordinates
