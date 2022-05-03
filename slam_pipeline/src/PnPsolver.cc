@@ -90,7 +90,9 @@ PnPsolver::PnPsolver(const MatchFramesResult &matchResult)
 
     if (pMP) {
       if (!pMP->isBad()) {
-        cv::Point2f kp = matchResult.keyPoints2[i];
+        // We will search correspondences between 3d map points and 2d matches
+        // in the current frame
+        cv::Point2f kp = matchResult.keyPoints1[i];
 
         mvP2D.push_back(kp);
 
@@ -306,7 +308,7 @@ void PnPsolver::CheckInliers() {
     double Yc =
         mRi[1][0] * P3Dw.x + mRi[1][1] * P3Dw.y + mRi[1][2] * P3Dw.z + mti[1];
     double invZc = 1 / (mRi[2][0] * P3Dw.x + mRi[2][1] * P3Dw.y +
-                       mRi[2][2] * P3Dw.z + mti[2]);
+                        mRi[2][2] * P3Dw.z + mti[2]);
 
     double ue = uc + fu * Xc * invZc;
     double ve = vc + fv * Yc * invZc;

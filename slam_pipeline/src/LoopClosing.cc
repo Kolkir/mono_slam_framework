@@ -117,11 +117,16 @@ bool LoopClosing::DetectLoop() {
   const std::vector<KeyFrame*> vpConnectedKeyFrames =
       mpCurrentKF->GetVectorCovisibleKeyFrames();
   size_t minScore = 1;
+  bool newSearch = true;
   for (size_t i = 0; i < vpConnectedKeyFrames.size(); i++) {
     KeyFrame* pKF = vpConnectedKeyFrames[i];
     if (pKF->isBad()) continue;
     auto matchResult = mFeatureMatcher->MatchFrames(mpCurrentKF, pKF);
     auto score = matchResult.GetNumMatches();
+    if (newSearch){
+      minScore = score;
+      newSearch = false;
+    }
     if (score < minScore) minScore = score;
   }
 

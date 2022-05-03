@@ -36,7 +36,7 @@ int main(int /*argc*/, char** /*argv*/) {
 
   // Configure SLAM objects
   // DNNFeatureMatcher featureMatcher(L"model/LoFTR_teacher.onnx");
-  // featureMatcher.SetThreshold(0.1);
+  // featureMatcher.SetThreshold(0.1f);
 
   FeatureMatcher featureMatcher;
   featureMatcher.SetThreshold(0.5f);

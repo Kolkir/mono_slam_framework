@@ -119,8 +119,6 @@ void Tracking::Track() {
     // Initial camera pose estimation using motion model or relocalization (if
     // tracking is lost)
 
-    // Local Mapping is activated.
-
     if (mState == OK) {
       // Local Mapping might have changed some MapPoints tracked in last frame
       CheckReplacedInLastFrame();
@@ -820,8 +818,8 @@ bool Tracking::Relocalization() {
           if (vbInliers[j]) {
             mCurrentFrame->mKeyPointMap.SetMapPoint(
                 vvpMapPointMatches[i].keyPoints1[j],
-                vvpMapPointMatches[i].GetMapPoint1(j));
-            sFound.insert(vvpMapPointMatches[i].GetMapPoint1(j));
+                vvpMapPointMatches[i].GetMapPoint2(j));
+            sFound.insert(vvpMapPointMatches[i].GetMapPoint2(j));
           } else {
             mCurrentFrame->mKeyPointMap.SetMapPoint(
                 vvpMapPointMatches[i].keyPoints1[j], nullptr);
@@ -861,6 +859,7 @@ bool Tracking::Relocalization() {
     mCurrentFrame->mTcw = cv::Mat::zeros(0, 0, CV_32F);
     return false;
   } else {
+    std::cout << "Relocalization successful" << std::endl;
     mnLastRelocFrameId = mCurrentFrame->id();
     return true;
   }
@@ -876,7 +875,7 @@ void Tracking::Reset() {
 
   // Reset Loop Closing
   cout << "Reseting Loop Closing...";
-  // mpLoopClosing->RequestReset();
+  mpLoopClosing->RequestReset();
   cout << " done" << endl;
 
   // Clear BoW Database
