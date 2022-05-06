@@ -60,11 +60,16 @@ void MapDrawer::SetPosDir(float x, float y, float z, float dx, float dy,
   m_curDir = pcl::PointXYZ(dx, dy, dz);
 }
 
+MapDrawer::~MapDrawer() { Stop(); }
+
 void MapDrawer::Start() {
   mGuiThread = std::thread(&MapDrawer::ThreadFunc, this);
 }
 
-void MapDrawer::Stop() { mIsStopped = true; }
+void MapDrawer::Stop() {
+  mIsStopped = true;
+  mGuiThread.join();
+}
 
 void MapDrawer::CreateViewer() {
   mViewer.reset(new pcl::visualization::PCLVisualizer("Map Viewer"));

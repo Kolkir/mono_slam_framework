@@ -2,7 +2,6 @@
 
 #include <onnxruntime_cxx_api.h>
 
-#include <mutex>
 #include <opencv2/core/core.hpp>
 
 #include "slam_pipeline/include/FeatureMatcher.h"
@@ -35,6 +34,4 @@ class DNNFeatureMatcher : public SLAM_PIPELINE::FeatureMatcher {
   std::vector<std::string> output_node_names_str_;
   std::vector<const char*> input_node_names_;
   std::vector<const char*> output_node_names_;
-
-  std::mutex guard_;
 };

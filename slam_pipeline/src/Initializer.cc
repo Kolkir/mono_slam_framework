@@ -75,7 +75,7 @@ bool Initializer::InitializeOpenCV(const MatchFramesResult &matchResult,
 bool Initializer::Initialize(const MatchFramesResult &matchResult, cv::Mat &R21,
                              cv::Mat &t21, std::vector<cv::Point3f> &vP3D,
                              std::vector<bool> &vbTriangulated,
-                             int minTriangulaed) {
+                             int minTriangulaed, float minParallax) {
   mvKeys1.assign(matchResult.keyPoints1.begin(), matchResult.keyPoints1.end());
   mvKeys2.assign(matchResult.keyPoints2.begin(), matchResult.keyPoints2.end());
   mvMatches12.clear();
@@ -137,8 +137,6 @@ bool Initializer::Initialize(const MatchFramesResult &matchResult, cv::Mat &R21,
   // Compute ratio of scores
   float RH = SH / (SH + SF);
 
-  // static_cast<float>(M_PI / 6.0);  // 15 degrees
-  const float minParallax = 1.0f;
   // Try to reconstruct from homography or fundamental depending on the ratio
   // (0.40-0.45)
   if (RH > 0.40)

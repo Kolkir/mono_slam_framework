@@ -21,7 +21,6 @@
 #include "Tracking.h"
 
 #include <iostream>
-#include <mutex>
 #include <opencv2/core/core.hpp>
 #include <opencv2/features2d/features2d.hpp>
 
@@ -37,14 +36,13 @@ using namespace std;
 
 namespace SLAM_PIPELINE {
 
-Tracking::Tracking(System* pSys, MapDrawer* pMapDrawer, Map* pMap,
-                   KeyFrameDatabase* pKFDB, const FeatureParameters& parameters,
+Tracking::Tracking(MapDrawer* pMapDrawer, Map* pMap, KeyFrameDatabase* pKFDB,
+                   const FeatureParameters& parameters,
                    FeatureMatcher* featureMatcher, FrameFactory* frameFactory,
                    KeyFrameFactory* keyFrameFactory)
     : mState(NO_IMAGES_YET),
       mpKeyFrameDB(pKFDB),
       mpInitializer(static_cast<Initializer*>(NULL)),
-      mpSystem(pSys),
       mpMapDrawer(pMapDrawer),
       mpMap(pMap),
       mnLastRelocFrameId(0),
@@ -54,7 +52,7 @@ Tracking::Tracking(System* pSys, MapDrawer* pMapDrawer, Map* pMap,
       mFeatureMatcher(featureMatcher) {
   mImgWidth = static_cast<int>(parameters.cx * 2);
   mImgHeight = static_cast<int>(parameters.cy * 2);
-  mIniMatchImage = cv::Mat(cv::Size(mImgWidth * 2, mImgHeight), CV_8UC3);
+  mCurrentMatchImage = cv::Mat(cv::Size(mImgWidth * 2, mImgHeight), CV_8UC3);
 
   cv::Mat K = cv::Mat::eye(3, 3, CV_32F);
   K.at<float>(0, 0) = parameters.fx;
@@ -77,6 +75,8 @@ Tracking::Tracking(System* pSys, MapDrawer* pMapDrawer, Map* pMap,
   cout << "- fy: " << parameters.fy << endl;
   cout << "- cx: " << parameters.cx << endl;
   cout << "- cy: " << parameters.cy << endl;
+
+  mMinParallax = static_cast<float>(parameters.minimumParallax);
 }
 
 void Tracking::SetLocalMapper(LocalMapping* pLocalMapper) {
@@ -100,9 +100,6 @@ void Tracking::Track() {
   }
 
   mLastProcessedState = mState;
-
-  // Get Map Mutex -> Map cannot be changed
-  unique_lock<mutex> lock(mpMap->mMutexMapUpdate);
 
   if (mState == NOT_INITIALIZED) {
     if (mpMap->MapPointsInMap() == 0) {
@@ -142,10 +139,12 @@ void Tracking::Track() {
       // the local map.
       bOK = TrackLocalMap();
     }
-    if (bOK)
+    if (bOK) {
       mState = OK;
-    else
+    } else {
       mState = LOST;
+      std::cout << "Tracking lost ..." << std::endl;
+    }
 
     // If tracking were good, check if we insert a keyframe
     if (bOK) {
@@ -170,7 +169,7 @@ void Tracking::Track() {
     if (mState == LOST) {
       if (mpMap->KeyFramesInMap() <= mnMinimumKeyFrames) {
         cout << "Track lost soon after initialisation, reseting..." << endl;
-        mpSystem->Reset();
+        Reset();
         return;
       }
     }
@@ -227,7 +226,7 @@ void Tracking::MonocularInitialization() {
     mIniMatchResult =
         mFeatureMatcher->MatchFrames(mInitialFrame.get(), mCurrentFrame.get());
 
-    CreateIniMatchImage();
+    CreateCurrentMatchImage(mIniMatchResult);
 
     if (!mInitializationAllowed) return;
 
@@ -245,7 +244,8 @@ void Tracking::MonocularInitialization() {
     vector<bool> vbTriangulated;  // Triangulated Correspondences (mvIniMatches)
 
     if (mpInitializer->Initialize(mIniMatchResult, Rcw, tcw, mvIniP3D,
-                                  vbTriangulated, mMinIniMatchCount)) {
+                                  vbTriangulated, mMinIniMatchCount,
+                                  mMinParallax)) {
       mvIniMatches.resize(mIniMatchResult.GetNumMatches());
       for (size_t i = 0, iend = mvIniMatches.size(); i < iend; i++) {
         if (vbTriangulated[i]) {
@@ -379,6 +379,8 @@ bool Tracking::TrackReferenceKeyFrame() {
   auto matchResult =
       mFeatureMatcher->MatchFrames(mCurrentFrame.get(), mpReferenceKF);
 
+  CreateCurrentMatchImage(matchResult);
+
   auto nmatches = matchResult.GetNumMatches();
 
   if (nmatches < mMinLocalMatchCount) {
@@ -438,6 +440,8 @@ bool Tracking::TrackWithMotionModel() {
   // Match points seen in previous frame
   auto matchResult =
       mFeatureMatcher->MatchFrames(mCurrentFrame.get(), mLastFrame.get());
+
+  CreateCurrentMatchImage(matchResult);
 
   auto nmatches = matchResult.GetNumMatches();
 
@@ -508,10 +512,6 @@ bool Tracking::TrackLocalMap() {
 }
 
 bool Tracking::NeedNewKeyFrame() {
-  // If Local Mapping is freezed by a Loop Closure do not insert keyframes
-  if (mpLocalMapper->isStopped() || mpLocalMapper->stopRequested())
-    return false;
-
   const int nKFs = static_cast<int>(mpMap->KeyFramesInMap());
 
   // Do not insert keyframes if not enough frames have passed from last
@@ -525,9 +525,6 @@ bool Tracking::NeedNewKeyFrame() {
   if (nKFs <= 2) nMinObs = 2;
   int nRefMatches = mpReferenceKF->TrackedMapPoints(nMinObs);
 
-  // Local Mapping accept keyframes?
-  bool bLocalMappingIdle = mpLocalMapper->AcceptKeyFrames();
-
   // Thresholds
   float thRefRatio = 0.9f;
 
@@ -535,8 +532,7 @@ bool Tracking::NeedNewKeyFrame() {
   // insertion
   const bool c1a = mCurrentFrame->id() >= mnLastKeyFrameId + mMaxFrames;
   // Condition 1b: More than "MinFrames" have passed and Local Mapping is idle
-  const bool c1b = (mCurrentFrame->id() >= mnLastKeyFrameId + mMinFrames &&
-                    bLocalMappingIdle);
+  const bool c1b = (mCurrentFrame->id() >= mnLastKeyFrameId + mMinFrames);
 
   // Few tracked points compared to reference keyframe. Lots of
   // visual odometry compared to map matches.
@@ -544,21 +540,12 @@ bool Tracking::NeedNewKeyFrame() {
                    mnMatchesInliers > mMinLocalMatchCount);
 
   if ((c1a || c1b) && c2) {
-    // If the mapping accepts keyframes, insert keyframe.
-    // Otherwise send a signal to interrupt BA
-    if (bLocalMappingIdle) {
-      return true;
-    } else {
-      mpLocalMapper->InterruptBA();
-      return false;
-    }
+    return true;
   } else
     return false;
 }
 
 void Tracking::CreateNewKeyFrame() {
-  if (!mpLocalMapper->SetNotStop(true)) return;
-
   std::cout << "New KF created" << std::endl;
 
   KeyFrame* pKF = mKeyFrameFactory->Create(*mCurrentFrame, mpMap, mpKeyFrameDB);
@@ -567,8 +554,6 @@ void Tracking::CreateNewKeyFrame() {
   mCurrentFrame->mpReferenceKF = pKF;
 
   mpLocalMapper->InsertKeyFrame(pKF);
-
-  mpLocalMapper->SetNotStop(false);
 
   mnLastKeyFrameId = mCurrentFrame->id();
   mpLastKeyFrame = pKF;
@@ -797,6 +782,8 @@ bool Tracking::Relocalization() {
       int nInliers;
       bool bNoMore;
 
+      CreateCurrentMatchImage(vvpMapPointMatches[i]);
+
       PnPsolver* pSolver = vpPnPsolvers[i];
       cv::Mat Tcw = pSolver->iterate(5, bNoMore, vbInliers, nInliers);
 
@@ -870,15 +857,15 @@ void Tracking::Reset() {
 
   // Reset Local Mapping
   cout << "Reseting Local Mapper...";
-  mpLocalMapper->RequestReset();
+  mpLocalMapper->Reset();
   cout << " done" << endl;
 
   // Reset Loop Closing
   cout << "Reseting Loop Closing...";
-  mpLoopClosing->RequestReset();
+  mpLoopClosing->Reset();
   cout << " done" << endl;
 
-  // Clear BoW Database
+  // Clear Database
   cout << "Reseting Database...";
   mpKeyFrameDB->clear();
   cout << " done" << endl;
@@ -896,27 +883,48 @@ void Tracking::Reset() {
   mlbLost.clear();
 }
 
-cv::Mat Tracking::GetIniMatchImage() const { return mIniMatchImage; }
+cv::Mat Tracking::GetCurrentMatchImage() const { return mCurrentMatchImage; }
 
-void Tracking::CreateIniMatchImage() {
-  cv::Mat out_img0 = mIniMatchImage(cv::Rect(0, 0, mImgWidth, mImgHeight));
+void Tracking::CreateCurrentMatchImage(const MatchFramesResult& matchResult) {
+  cv::Mat out_img0 = mCurrentMatchImage(cv::Rect(0, 0, mImgWidth, mImgHeight));
   cv::Mat out_img1 =
-      mIniMatchImage(cv::Rect(mImgWidth, 0, mImgWidth, mImgHeight));
-  cv::cvtColor(mInitialFrame->imGray, out_img0, cv::COLOR_GRAY2RGB);
-  cv::cvtColor(mCurrentFrame->imGray, out_img1, cv::COLOR_GRAY2RGB);
+      mCurrentMatchImage(cv::Rect(mImgWidth, 0, mImgWidth, mImgHeight));
+  cv::cvtColor(matchResult.pF1->imGray, out_img0, cv::COLOR_GRAY2RGB);
+  cv::cvtColor(matchResult.pF2->imGray, out_img1, cv::COLOR_GRAY2RGB);
 
-  cv::Scalar color(0, 255, 0, 255);
+  cv::Scalar colorNewMatch(0, 255, 0, 255);
+  cv::Scalar colorWithMapPoint(255, 0, 0, 255);
   int radius = 3;
-  auto numMatches = mIniMatchResult.GetNumMatches();
+  auto numMatches = matchResult.GetNumMatches();
   for (int i = 0; i < numMatches; ++i) {
-    cv::circle(out_img0,
-               cv::Point(mIniMatchResult.keyPoints1[i].x,
-                         mIniMatchResult.keyPoints1[i].y),
-               radius, color, cv::FILLED);
-    cv::circle(out_img1,
-               cv::Point(mIniMatchResult.keyPoints2[i].x,
-                         mIniMatchResult.keyPoints2[i].y),
-               radius, color, cv::FILLED);
+    auto pMP1 = matchResult.GetMapPoint1(i);
+    auto pMP2 = matchResult.GetMapPoint2(i);
+    if (!pMP1 && !pMP2) {
+      cv::circle(
+          out_img0,
+          cv::Point(matchResult.keyPoints1[i].x, matchResult.keyPoints1[i].y),
+          radius, colorNewMatch, cv::FILLED);
+
+      cv::circle(
+          out_img1,
+          cv::Point(matchResult.keyPoints2[i].x, matchResult.keyPoints2[i].y),
+          radius, colorNewMatch, cv::FILLED);
+    }
+  }
+  for (int i = 0; i < numMatches; ++i) {
+    auto pMP1 = matchResult.GetMapPoint1(i);
+    auto pMP2 = matchResult.GetMapPoint2(i);
+    if (pMP1 || pMP2) {
+      cv::circle(
+          out_img0,
+          cv::Point(matchResult.keyPoints1[i].x, matchResult.keyPoints1[i].y),
+          radius, colorWithMapPoint, cv::FILLED);
+
+      cv::circle(
+          out_img1,
+          cv::Point(matchResult.keyPoints2[i].x, matchResult.keyPoints2[i].y),
+          radius, colorWithMapPoint, cv::FILLED);
+    }
   }
 }
 

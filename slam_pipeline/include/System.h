@@ -21,31 +21,22 @@
 #ifndef SYSTEM_H
 #define SYSTEM_H
 
-#include "slam_pipeline_export.h"
-
 #include <opencv2/core/core.hpp>
 #include <string>
-#include <thread>
+#include <memory>
 
 #include "KeyFrameDatabase.h"
 #include "LocalMapping.h"
 #include "Map.h"
 #include "MapDrawer.h"
 #include "Tracking.h"
+#include "slam_pipeline_export.h"
 
 namespace SLAM_PIPELINE {
-class MapDrawer;
-class Map;
-class Tracking;
-class LocalMapping;
 class LoopClosing;
-
-struct FeatureParameters;
 
 class SLAM_PIPELINE_EXPORT System {
  public:
-  // Initialize the SLAM system. It launches the Local Mapping, Loop Closing and
-  // Viewer threads.
   System(FeatureParameters &parameters, FeatureMatcher *featureMatcher,
          KeyFrameDatabase *keyFrameDatabase, FrameFactory *frameFactory,
          KeyFrameFactory *keyFrameFactory);
@@ -59,19 +50,11 @@ class SLAM_PIPELINE_EXPORT System {
   // since last call to this function
   bool MapChanged();
 
-  // Returns true if Global Bundle Adjustment is running
-  bool isRunningGBA();
-
   // Reset the system (clear map)
   void Reset();
 
   void StartGUI();
   void StopGUI();
-
-  // All threads will be requested to finish.
-  // It waits until all threads have finished.
-  // This function must be called before saving the trajectory.
-  void Shutdown();
 
   // Save keyframe poses in the TUM RGB-D dataset format.
   // This method works for all sensor input.
@@ -85,50 +68,34 @@ class SLAM_PIPELINE_EXPORT System {
 
   std::vector<MapPoint *> GetAllMapPoints();
 
-  cv::Mat GetIniMatchImage() const;
+  cv::Mat GetCurrentMatchImage() const;
 
   void ToggleInitializationAllowed();
 
  private:
-  FeatureMatcher* mFeatureMatcher;
+  FeatureMatcher *mFeatureMatcher;
   // KeyFrame database for place recognition (relocalization and loop
   // detection).
   KeyFrameDatabase *mpKeyFrameDatabase;
 
   // Map structure that stores the pointers to all KeyFrames and MapPoints.
-  Map *mpMap;
+  std::unique_ptr<Map> mpMap;
 
   // Tracker. It receives a frame and computes the associated camera pose.
   // It also decides when to insert a new keyframe, create some new MapPoints
   // and performs relocalization if tracking fails.
-  Tracking *mpTracker;
+  std::unique_ptr<Tracking> mpTracker;
 
   // Local Mapper. It manages the local map and performs local bundle
   // adjustment.
-  LocalMapping *mpLocalMapper;
+  std::unique_ptr<LocalMapping> mpLocalMapper;
 
   // Loop Closer. It searches loops with every new keyframe. If there is a loop
   // it performs a pose graph optimization and full bundle adjustment (in a new
   // thread) afterwards.
-  LoopClosing *mpLoopCloser;
+  std::shared_ptr<LoopClosing> mpLoopCloser;
 
-  MapDrawer *mpMapDrawer;
-
-  // System threads: Local Mapping, Loop Closing, Viewer.
-  // The Tracking thread "lives" in the main execution thread that creates the
-  // System object.
-  std::thread *mptLocalMapping;
-  std::thread *mptLoopClosing;
-
-  // Reset flag
-  std::mutex mMutexReset;
-  bool mbReset;
-
-  // Tracking state
-  int mTrackingState;
-  std::vector<MapPoint *> mTrackedMapPoints;
-  std::vector<cv::KeyPoint> mTrackedKeyPointsUn;
-  std::mutex mMutexState;
+  std::unique_ptr<MapDrawer> mpMapDrawer;
 
   // Current position
   cv::Mat current_position_;

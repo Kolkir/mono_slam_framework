@@ -1,12 +1,10 @@
 #ifndef FRAMEBASE_H
 #define FRAMEBASE_H
 
-#include "slam_pipeline_export.h"
-
-#include <mutex>
 #include <opencv2/opencv.hpp>
 
 #include "KeyPointMap.h"
+#include "slam_pipeline_export.h"
 
 namespace SLAM_PIPELINE {
 
@@ -59,8 +57,6 @@ class SLAM_PIPELINE_EXPORT FrameBase {
   cv::Mat mtcw;  // translation
   cv::Mat mRwc;  // rot inverse
   cv::Mat mOw;   // camera center
-
-  std::mutex mMutexPose;
 };
 
 }  // namespace SLAM_PIPELINE

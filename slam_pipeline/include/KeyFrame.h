@@ -21,8 +21,6 @@
 #ifndef KEYFRAME_H
 #define KEYFRAME_H
 
-#include <mutex>
-
 #include "Frame.h"
 #include "FrameBase.h"
 #include "KeyFrameDatabase.h"
@@ -101,8 +99,6 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
     return pKF1->id() < pKF2->id();
   }
 
-  // The following variables are accesed from only 1 thread or never change (no
-  // mutex needed).
  public:
   const long unsigned int mnFrameId;
 
@@ -118,7 +114,7 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
 
   // Variables used by the keyframe database
   long unsigned int mnLoopQuery;
-  float mLoopScore;
+  size_t mnLoopMatches;
 
   long unsigned int mnRelocQuery;
   float mRelocScore;
@@ -131,8 +127,6 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
   // Pose relative to parent (this is computed when bad flag is activated)
   cv::Mat mTcp;
 
-  // The following variables need to be accessed trough a mutex to be thread
-  // safe.
  private:
   KeyFrameDatabase* mpKeyFrameDB;
 
@@ -153,9 +147,6 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
 
   Map* mpMap;
 
-  std::mutex mMutexConnections;
-  std::mutex mMutexFeatures;
-
   static long unsigned int nNextId;
   long unsigned int mnId;
 };
@@ -164,9 +155,7 @@ class SLAM_PIPELINE_EXPORT KeyFrameFactory {
  public:
   virtual ~KeyFrameFactory() {}
   virtual KeyFrame* Create(Frame& F, Map* pMap, KeyFrameDatabase* pKFDB) const;
-  // virtual KeyFrame* Clone(KeyFrame* keyFrame) const;
 };
-
 }  // namespace SLAM_PIPELINE
 
 #endif  // KEYFRAME_H

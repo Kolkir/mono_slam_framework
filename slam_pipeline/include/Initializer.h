@@ -40,7 +40,7 @@ class SLAM_PIPELINE_EXPORT Initializer {
   // motion
   bool Initialize(const MatchFramesResult &matchResult, cv::Mat &R21,
                   cv::Mat &t21, std::vector<cv::Point3f> &vP3D,
-                  std::vector<bool> &vbTriangulated, int minTriangulaed);
+                  std::vector<bool> &vbTriangulated, int minTriangulaed, float minParallax);
 
   bool InitializeOpenCV(const MatchFramesResult &matchResult, cv::Mat &R21,
                         cv::Mat &t21, std::vector<cv::Point3f> &vP3D,

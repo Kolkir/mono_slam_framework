@@ -1,10 +1,10 @@
 #ifndef KEYPOINTMAP_H
 #define KEYPOINTMAP_H
 
-#include "slam_pipeline_export.h"
-
 #include <opencv2/core/core.hpp>
 #include <unordered_map>
+
+#include "slam_pipeline_export.h"
 
 namespace SLAM_PIPELINE {
 class MapPoint;
@@ -32,7 +32,7 @@ class SLAM_PIPELINE_EXPORT KeyPointMap {
   bool IsOutlier(const cv::Point2i& keyPoint);
   bool IsOutlier(int index);
 
-  MapPoint* GetMapPoint(const cv::Point2i& keyPoint, int diameter = 3);
+  MapPoint* GetMapPoint(const cv::Point2i& keyPoint, int diameter = 5);
 
   cv::Point2i KeyPointFromIndex(int index) const;
 

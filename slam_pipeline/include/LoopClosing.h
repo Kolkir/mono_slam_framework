@@ -21,9 +21,6 @@
 #ifndef LOOPCLOSING_H
 #define LOOPCLOSING_H
 
-#include <mutex>
-#include <thread>
-
 #include "FeatureMatcher.h"
 #include "KeyFrame.h"
 #include "KeyFrameDatabase.h"
@@ -49,10 +46,6 @@
 
 namespace SLAM_PIPELINE {
 
-class Tracking;
-class LocalMapping;
-class KeyFrameDatabase;
-
 typedef std::pair<std::set<KeyFrame*>, int> ConsistentGroup;
 typedef std::map<
     KeyFrame*, g2o::Sim3, std::less<KeyFrame*>,
@@ -61,7 +54,8 @@ typedef std::map<
 
 class LoopClosing {
  public:
-  LoopClosing(Map* pMap, KeyFrameDatabase* pDB, FeatureMatcher* featureMatcher, const FeatureParameters& parameters);
+  LoopClosing(Map* pMap, KeyFrameDatabase* pDB, FeatureMatcher* featureMatcher,
+              const FeatureParameters& parameters);
 
   void SetLocalMapper(LocalMapping* pLocalMapper);
 
@@ -70,23 +64,10 @@ class LoopClosing {
 
   void InsertKeyFrame(KeyFrame* pKF);
 
-  void RequestReset();
+  void Reset();
 
   // This function will run in a separate thread
   void RunGlobalBundleAdjustment(unsigned long nLoopKF);
-
-  bool isRunningGBA() {
-    std::unique_lock<std::mutex> lock(mMutexGBA);
-    return mbRunningGBA;
-  }
-  bool isFinishedGBA() {
-    std::unique_lock<std::mutex> lock(mMutexGBA);
-    return mbFinishedGBA;
-  }
-
-  void RequestFinish();
-
-  bool isFinished();
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -99,16 +80,6 @@ class LoopClosing {
 
   void CorrectLoop();
 
-  void ResetIfRequested();
-  bool mbResetRequested;
-  std::mutex mMutexReset;
-
-  bool CheckFinish();
-  void SetFinish();
-  bool mbFinishRequested;
-  bool mbFinished;
-  std::mutex mMutexFinish;
-
   Map* mpMap;
 
   KeyFrameDatabase* mpKeyFrameDB;
@@ -116,8 +87,6 @@ class LoopClosing {
   LocalMapping* mpLocalMapper;
 
   std::list<KeyFrame*> mlpLoopKeyFrameQueue;
-
-  std::mutex mMutexLoopQueue;
 
   // Loop detector parameters
   float mnCovisibilityConsistencyTh;
@@ -134,13 +103,6 @@ class LoopClosing {
   g2o::Sim3 mg2oScw;
 
   long unsigned int mLastLoopKFid;
-
-  // Variables related to Global Bundle Adjustment
-  bool mbRunningGBA;
-  bool mbFinishedGBA;
-  bool mbStopGBA;
-  std::mutex mMutexGBA;
-  std::thread* mpThreadGBA;
 
   // Fix scale in the stereo/RGB-D case
   bool mbFixScale;

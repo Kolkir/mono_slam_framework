@@ -1,4 +1,5 @@
 #include <chrono>
+#include <future>
 #include <memory>
 #include <opencv2/core/core.hpp>
 #include <opencv2/core/ocl.hpp>
@@ -18,7 +19,7 @@ using namespace webots;
 int main(int /*argc*/, char** /*argv*/) {
   namespace slam = SLAM_PIPELINE;
 
-  //for (;;) {
+  // for (;;) {
   //  std::this_thread::sleep_for(std::chrono::milliseconds(100));
   //}
   cv::ocl::setUseOpenCL(false);
@@ -39,7 +40,7 @@ int main(int /*argc*/, char** /*argv*/) {
   // featureMatcher.SetThreshold(0.1f);
 
   FeatureMatcher featureMatcher;
-  featureMatcher.SetThreshold(0.5f);
+  featureMatcher.SetThreshold(0.7f);
 
   slam::FeatureParameters slam_parameters;
   slam_parameters.cx = static_cast<float>(camera->getWidth() / 2);
@@ -72,6 +73,7 @@ int main(int /*argc*/, char** /*argv*/) {
     motor->setVelocity(0.0);
   }
 
+  // milliseconds
   int time_step = 64;  //(int)robot->getBasicTimeStep();
 
   keyboard->enable(time_step);
@@ -80,6 +82,7 @@ int main(int /*argc*/, char** /*argv*/) {
   cv::Mat out_img(cv::Size(width * 2, height), CV_8UC3);
   cv::Mat img_gray;
   size_t img_size = img.total() * img.elemSize();
+  std::future<cv::Mat> slam_track_result;
 
   const double MAX_SPEED = 2.0;
   double left_speed = 0.0;
@@ -91,12 +94,23 @@ int main(int /*argc*/, char** /*argv*/) {
       std::memcpy(img.data, img_data, img_size);
       cv::cvtColor(img, img_gray, cv::COLOR_BGRA2GRAY);
 
-      auto time_stamp = std::chrono::high_resolution_clock::now();
-      slam_system.TrackMonocular(
-          img_gray.clone(),
-          static_cast<double>(time_stamp.time_since_epoch().count()));
-      out_img = slam_system.GetIniMatchImage();
+      auto slam_tracking = [&]() {
+        auto time_stamp = std::chrono::high_resolution_clock::now();
+        slam_system.TrackMonocular(
+            img_gray.clone(),
+            static_cast<double>(time_stamp.time_since_epoch().count()));
+        return slam_system.GetCurrentMatchImage();
+      };
 
+      if (!slam_track_result.valid()) {
+        slam_track_result = std::async(std::launch::async, slam_tracking);
+      } else {
+        auto status = slam_track_result.wait_for(std::chrono::milliseconds(time_step));
+        if (status == std::future_status::ready) {
+          out_img = slam_track_result.get();
+          slam_track_result = std::async(std::launch::async, slam_tracking);
+        }
+      }
       // show
       if (!out_img.empty()) {
         auto* ir = display_features->imageNew(out_img.cols, out_img.rows,
@@ -141,7 +155,6 @@ int main(int /*argc*/, char** /*argv*/) {
   };
 
   slam_system.StopGUI();
-  slam_system.Shutdown();
 
   return 0;
 }

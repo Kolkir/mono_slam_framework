@@ -20,8 +20,6 @@
 
 #include "LocalMapping.h"
 
-#include <mutex>
-
 #include "FeatureMatcher.h"
 #include "KeyPointMap.h"
 #include "LoopClosing.h"
@@ -29,97 +27,54 @@
 
 namespace SLAM_PIPELINE {
 
-LocalMapping::LocalMapping(Map *pMap, FeatureMatcher *featureMatcher)
-    : mbResetRequested(false),
-      mbFinishRequested(false),
-      mbFinished(true),
-      mpMap(pMap),
-      mbAbortBA(false),
-      mbStopped(false),
-      mbStopRequested(false),
-      mbNotStop(false),
-      mbAcceptKeyFrames(true),
-      mFeatureMatcher(featureMatcher) {}
+LocalMapping::LocalMapping(Map *pMap, FeatureMatcher *featureMatcher,
+                           const FeatureParameters &parameters)
+    : mpMap(pMap), mFeatureMatcher(featureMatcher) {
+  mMinParallax = parameters.minimumParallax;
+}
 
 void LocalMapping::SetLoopCloser(LoopClosing *pLoopCloser) {
   mpLoopCloser = pLoopCloser;
 }
 
 void LocalMapping::Run() {
-  mbFinished = false;
+  // Check if there are keyframes in the queue
+  if (CheckNewKeyFrames()) {
+    ProcessNewKeyFrame();
 
-  while (1) {
-    // Tracking will see that Local Mapping is busy
-    SetAcceptKeyFrames(false);
+    // Check recent MapPoints
+    MapPointCulling();
 
-    // Check if there are keyframes in the queue
-    if (CheckNewKeyFrames()) {
-      ProcessNewKeyFrame();
+    // Triangulate new MapPoints
+    CreateNewMapPoints();
 
-      // Check recent MapPoints
-      MapPointCulling();
+    // Find more matches in neighbor keyframes and fuse point duplications
+    SearchInNeighbors();
 
-      // Triangulate new MapPoints
-      CreateNewMapPoints();
-
-      if (!CheckNewKeyFrames()) {
-        // Find more matches in neighbor keyframes and fuse point duplications
-        SearchInNeighbors();
-      }
-
-      mbAbortBA = false;
-
-      if (!CheckNewKeyFrames() && !stopRequested()) {
-        // Local BA
-        if (mpMap->KeyFramesInMap() > 2)
-          Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame, &mbAbortBA,
-                                           mpMap);
-
-        std::cout << "Local BA done" << std::endl;
-
-        // Check redundant local Keyframes
-        KeyFrameCulling();
-      }
-
-      mpLoopCloser->InsertKeyFrame(mpCurrentKeyFrame);
-    } else if (Stop()) {
-      // Safe area to stop
-      while (isStopped() && !CheckFinish()) {
-        std::this_thread::sleep_for(std::chrono::microseconds(3000));
-      }
-      if (CheckFinish()) break;
+    // Local BA
+    if (mpMap->KeyFramesInMap() > 2) {
+      bool bAbortBA = false;
+      Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame, &bAbortBA);
     }
 
-    ResetIfRequested();
+    std::cout << "Local BA done" << std::endl;
 
-    // Tracking will see that Local Mapping is busy
-    SetAcceptKeyFrames(true);
+    // Check redundant local Keyframes
+    KeyFrameCulling();
 
-    if (CheckFinish()) break;
-
-    std::this_thread::sleep_for(std::chrono::microseconds(3000));
+    mpLoopCloser->InsertKeyFrame(mpCurrentKeyFrame);
   }
-
-  SetFinish();
 }
 
 void LocalMapping::InsertKeyFrame(KeyFrame *pKF) {
-  std::unique_lock<std::mutex> lock(mMutexNewKFs);
   mlNewKeyFrames.push_back(pKF);
-  mbAbortBA = true;
 }
 
-bool LocalMapping::CheckNewKeyFrames() {
-  std::unique_lock<std::mutex> lock(mMutexNewKFs);
-  return (!mlNewKeyFrames.empty());
-}
+bool LocalMapping::CheckNewKeyFrames() { return (!mlNewKeyFrames.empty()); }
 
 void LocalMapping::ProcessNewKeyFrame() {
-  {
-    std::unique_lock<std::mutex> lock(mMutexNewKFs);
-    mpCurrentKeyFrame = mlNewKeyFrames.front();
-    mlNewKeyFrames.pop_front();
-  }
+  mpCurrentKeyFrame = mlNewKeyFrames.front();
+  mlNewKeyFrames.pop_front();
 
   // Associate MapPoints to the new keyframe and update normal
   auto vpMapPointMatches = mpCurrentKeyFrame->GetMapPointMatches();
@@ -250,7 +205,7 @@ void LocalMapping::CreateNewMapPoints() {
           ray1.dot(ray2) / (cv::norm(ray1) * cv::norm(ray2));
 
       cv::Mat x3D;
-      if (cosParallaxRays > 0 && cosParallaxRays < 0.9998) {
+      if (cosParallaxRays > 0 && cosParallaxRays < mMinParallax) {
         // Linear Triangulation Method
         cv::Mat A(4, 4, CV_32F);
         A.row(0) = xn1.at<float>(0) * Tcw1.row(2) - Tcw1.row(0);
@@ -407,40 +362,7 @@ void LocalMapping::SearchInNeighbors() {
   mpCurrentKeyFrame->UpdateConnections();
 }
 
-void LocalMapping::RequestStop() {
-  std::unique_lock<std::mutex> lock(mMutexStop);
-  mbStopRequested = true;
-  std::unique_lock<std::mutex> lock2(mMutexNewKFs);
-  mbAbortBA = true;
-}
-
-bool LocalMapping::Stop() {
-  std::unique_lock<std::mutex> lock(mMutexStop);
-  if (mbStopRequested && !mbNotStop) {
-    mbStopped = true;
-    std::cout << "Local Mapping STOP" << std::endl;
-    return true;
-  }
-
-  return false;
-}
-
-bool LocalMapping::isStopped() {
-  std::unique_lock<std::mutex> lock(mMutexStop);
-  return mbStopped;
-}
-
-bool LocalMapping::stopRequested() {
-  std::unique_lock<std::mutex> lock(mMutexStop);
-  return mbStopRequested;
-}
-
 void LocalMapping::Release() {
-  std::unique_lock<std::mutex> lock(mMutexStop);
-  std::unique_lock<std::mutex> lock2(mMutexFinish);
-  if (mbFinished) return;
-  mbStopped = false;
-  mbStopRequested = false;
   for (std::list<KeyFrame *>::iterator lit = mlNewKeyFrames.begin(),
                                        lend = mlNewKeyFrames.end();
        lit != lend; lit++)
@@ -449,28 +371,6 @@ void LocalMapping::Release() {
 
   std::cout << "Local Mapping RELEASE" << std::endl;
 }
-
-bool LocalMapping::AcceptKeyFrames() {
-  std::unique_lock<std::mutex> lock(mMutexAccept);
-  return mbAcceptKeyFrames;
-}
-
-void LocalMapping::SetAcceptKeyFrames(bool flag) {
-  std::unique_lock<std::mutex> lock(mMutexAccept);
-  mbAcceptKeyFrames = flag;
-}
-
-bool LocalMapping::SetNotStop(bool flag) {
-  std::unique_lock<std::mutex> lock(mMutexStop);
-
-  if (flag && mbStopped) return false;
-
-  mbNotStop = flag;
-
-  return true;
-}
-
-void LocalMapping::InterruptBA() { mbAbortBA = true; }
 
 void LocalMapping::KeyFrameCulling() {
   // Check redundant keyframes (only local keyframes)
@@ -526,50 +426,9 @@ void LocalMapping::KeyFrameCulling() {
   std::cout << "Bad KF " << nbadframes << std::endl;
 }
 
-void LocalMapping::RequestReset() {
-  {
-    std::unique_lock<std::mutex> lock(mMutexReset);
-    mbResetRequested = true;
-  }
-
-  while (1) {
-    {
-      std::unique_lock<std::mutex> lock2(mMutexReset);
-      if (!mbResetRequested) break;
-    }
-    std::this_thread::sleep_for(std::chrono::microseconds(3000));
-  }
-}
-
-void LocalMapping::ResetIfRequested() {
-  std::unique_lock<std::mutex> lock(mMutexReset);
-  if (mbResetRequested) {
-    mlNewKeyFrames.clear();
-    mlpRecentAddedMapPoints.clear();
-    mbResetRequested = false;
-  }
-}
-
-void LocalMapping::RequestFinish() {
-  std::unique_lock<std::mutex> lock(mMutexFinish);
-  mbFinishRequested = true;
-}
-
-bool LocalMapping::CheckFinish() {
-  std::unique_lock<std::mutex> lock(mMutexFinish);
-  return mbFinishRequested;
-}
-
-void LocalMapping::SetFinish() {
-  std::unique_lock<std::mutex> lock(mMutexFinish);
-  mbFinished = true;
-  std::unique_lock<std::mutex> lock2(mMutexStop);
-  mbStopped = true;
-}
-
-bool LocalMapping::isFinished() {
-  std::unique_lock<std::mutex> lock(mMutexFinish);
-  return mbFinished;
+void LocalMapping::Reset() {
+  mlNewKeyFrames.clear();
+  mlpRecentAddedMapPoints.clear();
 }
 
 }  // namespace SLAM_PIPELINE

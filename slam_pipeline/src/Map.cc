@@ -20,25 +20,20 @@
 
 #include "Map.h"
 
-#include <mutex>
-
 namespace SLAM_PIPELINE {
 
 Map::Map() : mnMaxKFid(0), mnBigChangeIdx(0) {}
 
 void Map::AddKeyFrame(KeyFrame *pKF) {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   mspKeyFrames.insert(pKF);
   if (pKF->id() > mnMaxKFid) mnMaxKFid = pKF->id();
 }
 
 void Map::AddMapPoint(MapPoint *pMP) {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   mspMapPoints.insert(pMP);
 }
 
 void Map::EraseMapPoint(MapPoint *pMP) {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   mspMapPoints.erase(pMP);
 
   // TODO: This only erase the pointer.
@@ -46,7 +41,6 @@ void Map::EraseMapPoint(MapPoint *pMP) {
 }
 
 void Map::EraseKeyFrame(KeyFrame *pKF) {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   mspKeyFrames.erase(pKF);
 
   // TODO: This only erase the pointer.
@@ -54,17 +48,14 @@ void Map::EraseKeyFrame(KeyFrame *pKF) {
 }
 
 void Map::InformNewBigChange() {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   mnBigChangeIdx++;
 }
 
 int Map::GetLastBigChangeIdx() {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   return mnBigChangeIdx;
 }
 
 std::pair<size_t, size_t> Map::GoodBadMapPointsInMap() {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   size_t nbad = 0;
   size_t ngood = 0;
   for (auto pMP : mspMapPoints) {
@@ -77,32 +68,26 @@ std::pair<size_t, size_t> Map::GoodBadMapPointsInMap() {
 }
 
 std::vector<KeyFrame *> Map::GetAllKeyFrames() {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   return std::vector<KeyFrame *>(mspKeyFrames.begin(), mspKeyFrames.end());
 }
 
 std::vector<MapPoint *> Map::GetAllMapPoints() {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   return std::vector<MapPoint *>(mspMapPoints.begin(), mspMapPoints.end());
 }
 
 size_t Map::MapPointsInMap() {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   return mspMapPoints.size();
 }
 
 size_t Map::KeyFramesInMap() {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   return mspKeyFrames.size();
 }
 
 long unsigned int Map::GetMaxKFid() {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   return mnMaxKFid;
 }
 
 void Map::clear() {
-  std::unique_lock<std::mutex> lock(mMutexMap);
   for (std::set<MapPoint *>::iterator sit = mspMapPoints.begin(),
                                       send = mspMapPoints.end();
        sit != send; sit++)

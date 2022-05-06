@@ -21,13 +21,11 @@
 #ifndef MAP_H
 #define MAP_H
 
-#include "slam_pipeline_export.h"
-
-#include <mutex>
 #include <set>
 
 #include "KeyFrame.h"
 #include "MapPoint.h"
+#include "slam_pipeline_export.h"
 
 namespace SLAM_PIPELINE {
 
@@ -59,12 +57,6 @@ class SLAM_PIPELINE_EXPORT Map {
 
   std::vector<KeyFrame*> mvpKeyFrameOrigins;
 
-  std::mutex mMutexMapUpdate;
-
-  // This avoid that two points are created simultaneously in separate threads
-  // (id conflict)
-  std::mutex mMutexPointCreation;
-
  protected:
   std::set<MapPoint*> mspMapPoints;
   std::set<KeyFrame*> mspKeyFrames;
@@ -73,8 +65,6 @@ class SLAM_PIPELINE_EXPORT Map {
 
   // Index related to a big change in the map (loop closure, global BA)
   int mnBigChangeIdx;
-
-  std::mutex mMutexMap;
 };
 
 }  // namespace SLAM_PIPELINE

@@ -23,7 +23,6 @@
 
 #include <opencv2/imgproc/types_c.h>
 
-#include <mutex>
 #include <opencv2/core/core.hpp>
 #include <opencv2/features2d/features2d.hpp>
 
@@ -33,16 +32,9 @@
 #include "LocalMapping.h"
 #include "Map.h"
 #include "MapDrawer.h"
-#include "System.h"
 #include "slam_pipeline_export.h"
 
 namespace SLAM_PIPELINE {
-
-class MapDrawer;
-class Map;
-class LocalMapping;
-class LoopClosing;
-class System;
 
 struct SLAM_PIPELINE_EXPORT FeatureParameters {
   // camera parameters
@@ -63,7 +55,7 @@ struct SLAM_PIPELINE_EXPORT FeatureParameters {
 
   // Loop closing parameters
   bool bFixScale{true};
-  
+
   float nCovisibilityConsistencyTh{3};
 
   // If the map contains less than num KF or less than num KF have passed from
@@ -73,14 +65,16 @@ struct SLAM_PIPELINE_EXPORT FeatureParameters {
   int minSim3Matches{15};
   int minTotalSim3Matches{30};
 
+  // The minimum possible parallax value to perform triangulation:
+  // how much map points will be created
+  double minimumParallax = 1.1;
 };
 
 class SLAM_PIPELINE_EXPORT Tracking {
  public:
-  Tracking(System* pSys, MapDrawer* pMapDrawer, Map* pMap,
-           KeyFrameDatabase* pKFDB, const FeatureParameters& parameters,
-           FeatureMatcher* featureMatcher, FrameFactory* frameFactory,
-           KeyFrameFactory* keyFrameFactory);
+  Tracking(MapDrawer* pMapDrawer, Map* pMap, KeyFrameDatabase* pKFDB,
+           const FeatureParameters& parameters, FeatureMatcher* featureMatcher,
+           FrameFactory* frameFactory, KeyFrameFactory* keyFrameFactory);
 
   Tracking(const Tracking&) = delete;
   Tracking operator=(const Tracking&) = delete;
@@ -94,7 +88,7 @@ class SLAM_PIPELINE_EXPORT Tracking {
 
   void Reset();
 
-  cv::Mat GetIniMatchImage() const;
+  cv::Mat GetCurrentMatchImage() const;
 
   void ToggleInitializationAllowed();
 
@@ -155,7 +149,7 @@ class SLAM_PIPELINE_EXPORT Tracking {
   bool NeedNewKeyFrame();
   void CreateNewKeyFrame();
 
-  void CreateIniMatchImage();
+  void CreateCurrentMatchImage(const MatchFramesResult& matchResult);
 
   // Numer of Keyframes a map has to have to not get a reset in the event of
   // lost tracking.
@@ -173,9 +167,6 @@ class SLAM_PIPELINE_EXPORT Tracking {
   // Local Map
   KeyFrame* mpReferenceKF;
   std::vector<KeyFrame*> mvpLocalKeyFrames;
-
-  // System
-  System* mpSystem;
 
   // Drawers
   MapDrawer* mpMapDrawer;
@@ -205,10 +196,11 @@ class SLAM_PIPELINE_EXPORT Tracking {
   FrameFactory* mFrameFactory{nullptr};
   KeyFrameFactory* mKeyFrameFactory{nullptr};
   FeatureMatcher* mFeatureMatcher;
-  cv::Mat mIniMatchImage;
+  cv::Mat mCurrentMatchImage;
   int mImgWidth{0};
   int mImgHeight{0};
   bool mInitializationAllowed{false};
+  float mMinParallax;
 };
 
 }  // namespace SLAM_PIPELINE

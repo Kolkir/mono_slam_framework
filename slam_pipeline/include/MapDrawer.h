@@ -32,6 +32,7 @@ class SLAM_PIPELINE_EXPORT MapDrawer {
   MapDrawer(Map *pMap);
   MapDrawer(const MapDrawer &) = delete;
   MapDrawer &operator=(const MapDrawer &) = delete;
+  ~MapDrawer();
 
   // Update points from the last processed frame.
   void Update();

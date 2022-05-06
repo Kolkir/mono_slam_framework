@@ -51,7 +51,6 @@ float FrameBase::cx() const { return mK.at<float>(0, 2); }
 float FrameBase::cy() const { return mK.at<float>(1, 2); }
 
 void FrameBase::SetPose(const cv::Mat &Tcw_) {
-  std::unique_lock<std::mutex> lock(mMutexPose);
   Tcw_.copyTo(mTcw);
   mRcw = mTcw.rowRange(0, 3).colRange(0, 3);
   mRwc = mRcw.t();
@@ -64,32 +63,26 @@ void FrameBase::SetPose(const cv::Mat &Tcw_) {
 }
 
 cv::Mat FrameBase::GetPose() {
-  std::unique_lock<std::mutex> lock(mMutexPose);
   return mTcw.clone();
 }
 
 cv::Mat FrameBase::GetPoseInverse() {
-  std::unique_lock<std::mutex> lock(mMutexPose);
   return mTwc.clone();
 }
 
 cv::Mat FrameBase::GetCameraCenter() {
-  std::unique_lock<std::mutex> lock(mMutexPose);
   return mOw.clone();
 }
 
 cv::Mat FrameBase::GetRotation() {
-  std::unique_lock<std::mutex> lock(mMutexPose);
   return mRcw.clone();
 }
 
 cv::Mat FrameBase::GetTranslation() {
-  std::unique_lock<std::mutex> lock(mMutexPose);
   return mtcw.clone();
 }
 
 cv::Mat FrameBase::GetRotationInverse() {
-  std::unique_lock<std::mutex> lock(mMutexPose);
   return mRwc.clone();
 }
 

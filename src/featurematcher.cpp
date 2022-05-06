@@ -9,8 +9,6 @@ FeatureMatcher::~FeatureMatcher() {}
 
 SLAM_PIPELINE::MatchFramesResult FeatureMatcher::MatchFrames(
     SLAM_PIPELINE::FrameBase* pF1, SLAM_PIPELINE::FrameBase* pF2) {
-  std::unique_lock<std::mutex> lock(guard_);
-
   cv::Mat mask(255 * cv::Mat::ones(pF1->imGray.size(), CV_8U));
   cv::Mat first_desc, second_desc;
   std::vector<cv::KeyPoint> first_kp, second_kp;

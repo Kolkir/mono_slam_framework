@@ -1,7 +1,5 @@
 #pragma once
 
-#include <mutex>
-
 #include <opencv2/features2d.hpp>
 
 #include "slam_pipeline/include/FeatureMatcher.h"
@@ -19,7 +17,6 @@ class FeatureMatcher : public SLAM_PIPELINE::FeatureMatcher {
   void SetThreshold(float value);
 
  private:
-  std::mutex guard_;
   cv::Ptr<cv::Feature2D> feature_extractor_;
   cv::Ptr<cv::DescriptorMatcher> feature_matcher_;
   float threshold_{0};

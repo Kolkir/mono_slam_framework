@@ -43,7 +43,6 @@ DNNFeatureMatcher::~DNNFeatureMatcher() {}
 
 SLAM_PIPELINE::MatchFramesResult DNNFeatureMatcher::MatchFrames(
     SLAM_PIPELINE::FrameBase* pF1, SLAM_PIPELINE::FrameBase* pF2) {
-  std::unique_lock<std::mutex> lock(guard_);
   auto first_input_image = ConvertImageToFloat(pF1->imGray);
   auto second_input_image = ConvertImageToFloat(pF2->imGray);
   size_t input_size = first_input_image.total() * first_input_image.elemSize();
@@ -60,24 +59,22 @@ SLAM_PIPELINE::MatchFramesResult DNNFeatureMatcher::MatchFrames(
   assert(input[1].IsTensor());
 
   cv::Mat confidence_map;
-  {
-    // std::unique_lock<std::mutex> lock(guard_);
-    auto output_tensors = session_.Run(
-        Ort::RunOptions{nullptr}, input_node_names_.data(), input.data(),
-        input.size(), output_node_names_.data(), output_node_names_.size());
+  auto output_tensors = session_.Run(
+      Ort::RunOptions{nullptr}, input_node_names_.data(), input.data(),
+      input.size(), output_node_names_.data(), output_node_names_.size());
 
-    auto output_tensor_info =
-        output_tensors[0].GetTypeInfo().GetTensorTypeAndShapeInfo();
-    auto output_shape = output_tensor_info.GetShape();
-    assert(output_shape.size() == 3);
+  auto output_tensor_info =
+      output_tensors[0].GetTypeInfo().GetTensorTypeAndShapeInfo();
+  auto output_shape = output_tensor_info.GetShape();
+  assert(output_shape.size() == 3);
 
-    float* output_data = output_tensors[0].GetTensorMutableData<float>();
-    confidence_map = cv::Mat(cv::Size(static_cast<int>(output_shape[2]),
-                                      static_cast<int>(output_shape[1])),
-                             CV_32F, output_data);
-    confidence_map = confidence_map > threshold_;
-    confidence_map = confidence_map.clone();  // copy data from onnx runtime
-  }
+  float* output_data = output_tensors[0].GetTensorMutableData<float>();
+  confidence_map = cv::Mat(cv::Size(static_cast<int>(output_shape[2]),
+                                    static_cast<int>(output_shape[1])),
+                           CV_32F, output_data);
+  confidence_map = confidence_map > threshold_;
+  confidence_map = confidence_map.clone();  // copy data from onnx runtime
+
   auto model_width = image_width_ / model_resolution_;
   cv::Mat feature_coordinates;
   cv::findNonZero(confidence_map, feature_coordinates);

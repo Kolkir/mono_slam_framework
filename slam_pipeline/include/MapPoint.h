@@ -21,14 +21,12 @@
 #ifndef MAPPOINT_H
 #define MAPPOINT_H
 
-#include "slam_pipeline_export.h"
-
-#include <mutex>
 #include <opencv2/core/core.hpp>
 
 #include "Frame.h"
 #include "KeyFrame.h"
 #include "Map.h"
+#include "slam_pipeline_export.h"
 
 namespace SLAM_PIPELINE {
 
@@ -93,8 +91,6 @@ class SLAM_PIPELINE_EXPORT MapPoint {
   cv::Mat mPosGBA;
   long unsigned int mnBAGlobalForKF;
 
-  static std::mutex mGlobalMutex;
-
  protected:
   // Position in absolute coordinates
   cv::Mat mWorldPos;
@@ -120,9 +116,6 @@ class SLAM_PIPELINE_EXPORT MapPoint {
   float mfDistance;
 
   Map* mpMap;
-
-  std::mutex mMutexPos;
-  std::mutex mMutexFeatures;
 };
 
 }  // namespace SLAM_PIPELINE

@@ -23,65 +23,48 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <thread>
 
 #include "Converter.h"
 #include "LoopClosing.h"
-#include "MapDrawer.h"
 
 namespace SLAM_PIPELINE {
 
 System::System(FeatureParameters &parameters, FeatureMatcher *featureMatcher,
                KeyFrameDatabase *keyFrameDatabase, FrameFactory *frameFactory,
                KeyFrameFactory *keyFrameFactory)
-    : mbReset(false),
-      mFeatureMatcher(featureMatcher),
-      mpKeyFrameDatabase(keyFrameDatabase) {
-  // Create the Map
-  mpMap = new Map();
+    : mFeatureMatcher(featureMatcher), mpKeyFrameDatabase(keyFrameDatabase) {
+  mpMap = std::make_unique<Map>();
 
-  // Create Drawers. These are used by the Viewer
-  mpMapDrawer = new MapDrawer(mpMap);
+  mpMapDrawer = std::make_unique<MapDrawer>(mpMap.get());
 
-  // Initialize the Tracking thread
-  //(it will live in the main thread of execution, the one that called this
-  // constructor)
-  mpTracker =
-      new Tracking(this, mpMapDrawer, mpMap, mpKeyFrameDatabase, parameters,
-                   mFeatureMatcher, frameFactory, keyFrameFactory);
+  mpTracker = std::make_unique<Tracking>(
+      mpMapDrawer.get(), mpMap.get(), mpKeyFrameDatabase, parameters,
+      mFeatureMatcher, frameFactory, keyFrameFactory);
 
-  // Initialize the Local Mapping thread and launch
-  mpLocalMapper = new LocalMapping(mpMap, mFeatureMatcher);
-  mptLocalMapping =
-      new std::thread(&SLAM_PIPELINE::LocalMapping::Run, mpLocalMapper);
+  mpLocalMapper =
+      std::make_unique<LocalMapping>(mpMap.get(), mFeatureMatcher, parameters);
 
-  // Initialize the Loop Closing thread and launch
-  mpLoopCloser =
-      new LoopClosing(mpMap, mpKeyFrameDatabase, mFeatureMatcher, parameters);
-  mptLoopClosing =
-      new std::thread(&SLAM_PIPELINE::LoopClosing::Run, mpLoopCloser);
+  mpLoopCloser = std::make_unique<LoopClosing>(mpMap.get(), mpKeyFrameDatabase,
+                                               mFeatureMatcher, parameters);
 
-  // Set pointers between threads
-  mpTracker->SetLocalMapper(mpLocalMapper);
-  mpTracker->SetLoopClosing(mpLoopCloser);
+  // Set pointers between modules
+  mpTracker->SetLocalMapper(mpLocalMapper.get());
+  mpTracker->SetLoopClosing(mpLoopCloser.get());
 
-  mpLocalMapper->SetLoopCloser(mpLoopCloser);
-  mpLoopCloser->SetLocalMapper(mpLocalMapper);
+  mpLocalMapper->SetLoopCloser(mpLoopCloser.get());
+  mpLoopCloser->SetLocalMapper(mpLocalMapper.get());
 }
 
 void System::TrackMonocular(const cv::Mat &im, const double &timestamp) {
-  // Check reset
-  {
-    std::unique_lock<std::mutex> lock(mMutexReset);
-    if (mbReset) {
-      mpTracker->Reset();
-      mbReset = false;
-    }
-  }
-
+  // grab image and track current position
   cv::Mat Tcw = mpTracker->GrabImageMonocular(im, timestamp);
 
-  std::unique_lock<std::mutex> lock2(mMutexState);
+  // local mapping: Associate MapPoints to the new keyframe, trangulate new map
+  // points, local bundle ajustments
+  mpLocalMapper->Run();
+
+  // loop closing
+  mpLoopCloser->Run();
 
   current_position_ = Tcw;
 }
@@ -96,26 +79,7 @@ bool System::MapChanged() {
     return false;
 }
 
-bool System::isRunningGBA() {
-  return false;
-  // mpLoopCloser->isRunningGBA();
-}
-
-void System::Reset() {
-  std::unique_lock<std::mutex> lock(mMutexReset);
-  mbReset = true;
-}
-
-void System::Shutdown() {
-  mpLocalMapper->RequestFinish();
-  // mpLoopCloser->RequestFinish();
-
-  // Wait until all thread have effectively stopped
-  while (!mpLocalMapper->isFinished() /*|| !mpLoopCloser->isFinished() ||
-         mpLoopCloser->isRunningGBA()*/) {
-    std::this_thread::sleep_for(std::chrono::microseconds(5000));
-  }
-}
+void System::Reset() { mpTracker->Reset(); }
 
 void System::SaveKeyFrameTrajectoryTUM(const std::string &filename) {
   std::cout << std::endl
@@ -165,8 +129,8 @@ std::vector<MapPoint *> System::GetAllMapPoints() {
   return mpMap->GetAllMapPoints();
 }
 
-cv::Mat System::GetIniMatchImage() const {
-  return mpTracker->GetIniMatchImage();
+cv::Mat System::GetCurrentMatchImage() const {
+  return mpTracker->GetCurrentMatchImage();
 }
 
 void System::ToggleInitializationAllowed() {

@@ -240,48 +240,41 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
   vnIndexEdgeMono.reserve(N);
 
   const auto deltaMono = sqrt(5.991);
-  {
-    std::unique_lock<std::mutex> lock(MapPoint::mGlobalMutex);
+  for (auto i = pFrame->mKeyPointMap.Begin(), end = pFrame->mKeyPointMap.End();
+       i != end; ++i) {
+    MapPoint* pMP = i->second.mapPoint;
+    if (pMP) {
+      // Monocular observation
+      nInitialCorrespondences++;
+      i->second.outlier = false;
 
-    for (auto i = pFrame->mKeyPointMap.Begin(),
-              end = pFrame->mKeyPointMap.End();
-         i != end; ++i) {
-      MapPoint* pMP = i->second.mapPoint;
-      if (pMP) {
-        // Monocular observation
-        nInitialCorrespondences++;
-        i->second.outlier = false;
+      Eigen::Matrix<double, 2, 1> obs;
+      const cv::Point2i& kpUn =
+          pFrame->mKeyPointMap.KeyPointFromIndex(i->first);
+      obs << kpUn.x, kpUn.y;
 
-        Eigen::Matrix<double, 2, 1> obs;
-        const cv::Point2i& kpUn =
-            pFrame->mKeyPointMap.KeyPointFromIndex(i->first);
-        obs << kpUn.x, kpUn.y;
+      g2o::EdgeSE3ProjectXYZOnlyPose* e = new g2o::EdgeSE3ProjectXYZOnlyPose();
 
-        g2o::EdgeSE3ProjectXYZOnlyPose* e =
-            new g2o::EdgeSE3ProjectXYZOnlyPose();
+      e->setVertex(
+          0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(0)));
+      e->setMeasurement(obs);
+      e->setInformation(Eigen::Matrix2d::Identity());
 
-        e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(
-                            optimizer.vertex(0)));
-        e->setMeasurement(obs);
-        e->setInformation(Eigen::Matrix2d::Identity());
+      g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+      e->setRobustKernel(rk);
+      rk->setDelta(deltaMono);
 
-        g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
-        e->setRobustKernel(rk);
-        rk->setDelta(deltaMono);
+      e->setFx(pFrame->fx());
+      e->setFy(pFrame->fy());
+      e->setCx(pFrame->cx());
+      e->setCy(pFrame->cy());
+      cv::Mat Xw = pMP->GetWorldPos();
+      e->setXw(g2o::Vector3(Xw.at<float>(0), Xw.at<float>(1), Xw.at<float>(2)));
 
-        e->setFx(pFrame->fx());
-        e->setFy(pFrame->fy());
-        e->setCx(pFrame->cx());
-        e->setCy(pFrame->cy());
-        cv::Mat Xw = pMP->GetWorldPos();
-        e->setXw(
-            g2o::Vector3(Xw.at<float>(0), Xw.at<float>(1), Xw.at<float>(2)));
+      optimizer.addEdge(e);
 
-        optimizer.addEdge(e);
-
-        vpEdgesMono.push_back(e);
-        vnIndexEdgeMono.push_back(i->first);
-      }
+      vpEdgesMono.push_back(e);
+      vnIndexEdgeMono.push_back(i->first);
     }
   }
 
@@ -336,8 +329,7 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
   return nInitialCorrespondences - nBad;
 }
 
-void Optimizer::LocalBundleAdjustment(KeyFrame* pKF, bool* pbStopFlag,
-                                      Map* pMap) {
+void Optimizer::LocalBundleAdjustment(KeyFrame* pKF, bool* pbStopFlag) {
   // Local KeyFrames: First Breath Search from Current Keyframe
   std::list<KeyFrame*> lLocalKeyFrames;
 
@@ -542,9 +534,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pKF, bool* pbStopFlag,
       vToErase.push_back(std::make_pair(pKFi, pMP));
     }
   }
-
-  // Get Map std::mutex
-  std::unique_lock<std::mutex> lock(pMap->mMutexMapUpdate);
 
   if (!vToErase.empty()) {
     for (size_t i = 0; i < vToErase.size(); i++) {
@@ -802,8 +791,6 @@ void Optimizer::OptimizeEssentialGraph(
   // Optimize!
   optimizer.initializeOptimization();
   optimizer.optimize(20);
-
-  std::unique_lock<std::mutex> lock(pMap->mMutexMapUpdate);
 
   // SE3 Pose Recovering. Sim3:[sR t;0 1] -> SE3:[R t/s;0 1]
   for (size_t i = 0; i < vpKFs.size(); i++) {

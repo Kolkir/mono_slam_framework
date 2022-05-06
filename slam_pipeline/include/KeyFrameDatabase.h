@@ -1,7 +1,6 @@
 #ifndef KEYFRAMEDATABASE_H
 #define KEYFRAMEDATABASE_H
 
-#include <mutex>
 #include <vector>
 
 #include "slam_pipeline_export.h"
@@ -22,8 +21,8 @@ class SLAM_PIPELINE_EXPORT KeyFrameDatabase {
 
   virtual void clear() = 0;
 
-  virtual std::vector<KeyFrame*> DetectLoopCandidates(KeyFrame* pKF,
-                                                      size_t minNumMatches) = 0;
+  virtual std::vector<KeyFrame*> DetectLoopCandidates(
+      KeyFrame* pKF, size_t minNumCovisibleMatches) = 0;
 
   virtual std::vector<KeyFrame*> DetectRelocalizationCandidates(
       FrameBase* pF) = 0;
@@ -40,13 +39,12 @@ class SLAM_PIPELINE_EXPORT KeyFrameMatchDatabase : public KeyFrameDatabase {
 
   void clear() override;
 
-  std::vector<KeyFrame*> DetectLoopCandidates(KeyFrame* pKF,
-                                              size_t minNumMatches) override;
+  std::vector<KeyFrame*> DetectLoopCandidates(
+      KeyFrame* pKF, size_t minNumCovisibleMatches) override;
 
   std::vector<KeyFrame*> DetectRelocalizationCandidates(FrameBase* pF) override;
 
  private:
-  std::mutex mGuard;
   FeatureMatcher* mFeatureMatcher{nullptr};
   std::vector<KeyFrame*> mFrames;
 };
