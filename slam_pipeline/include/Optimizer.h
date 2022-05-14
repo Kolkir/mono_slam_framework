@@ -21,21 +21,7 @@
 #ifndef OPTIMIZER_H
 #define OPTIMIZER_H
 
-#ifdef _MSC_VER
-#pragma warning(push, 0)
-#else
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wall"
-#pragma clang diagnostic ignored "-Wextra"
-#endif
-
-#include <g2o/types/sim3/types_seven_dof_expmap.h>
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#else
-#pragma clang diagnostic pop
-#endif
+#include <vector>
 
 #include "slam_pipeline_export.h"
 #include "types.h"
@@ -52,16 +38,15 @@ class SLAM_PIPELINE_EXPORT Optimizer {
                                int nIterations = 5, bool *pbStopFlag = NULL,
                                const unsigned long nLoopKF = 0,
                                const bool bRobust = true);
+
   void static GlobalBundleAdjustemnt(Map *pMap, int nIterations = 5,
                                      bool *pbStopFlag = NULL,
                                      const unsigned long nLoopKF = 0,
                                      const bool bRobust = true);
-  void static LocalBundleAdjustment(KeyFramePtr pKF, bool *pbStopFlag);
-  int static PoseOptimization(FramePtr pFrame);
 
-  // if bFixScale is true, optimize SE3 (stereo,rgbd), Sim3 otherwise (mono)
-  static int OptimizeSim3(MatchFramesResult &vpMatches1, g2o::Sim3 &g2oS12,
-                          const float th2, const bool bFixScale);
+  void static LocalBundleAdjustment(KeyFramePtr pKF, bool *pbStopFlag);
+
+  int static PoseOptimization(FramePtr pFrame);
 };
 
 }  // namespace SLAM_PIPELINE

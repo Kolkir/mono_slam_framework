@@ -25,10 +25,12 @@
 #include <iostream>
 
 #include "Converter.h"
+#include "KeyFrame.h"
+#include "LocalMapping.h"
 #include "LoopClosing.h"
-#include "Tracking.h"
+#include "Map.h"
 #include "MapDrawer.h"
-
+#include "Tracking.h"
 
 namespace SLAM_PIPELINE {
 

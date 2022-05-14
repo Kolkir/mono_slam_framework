@@ -60,7 +60,6 @@ include/PnPsolver.h
 include/FrameBase.h
 include/Frame.h
 include/KeyFrameDatabase.h
-include/Sim3Solver.h
 include/Initializer.h
 include/SlamParameters.h
 )
@@ -83,7 +82,6 @@ src/PnPsolver.cc
 src/Frame.cc
 src/FrameBase.cc
 src/KeyFrameDatabase.cc
-src/Sim3Solver.cc
 src/Initializer.cc
 )
 

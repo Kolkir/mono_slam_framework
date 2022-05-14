@@ -22,15 +22,12 @@ struct SLAM_PIPELINE_EXPORT SlamParameters {
   int minimumKeyFrames{5};
 
   // Loop closing parameters
-  float nCovisibilityConsistencyTh{3};
 
   // If the map contains less than num KF or less than num KF have passed from
   // last loop detection then populate key frame database
   int loopDetectionMaxFrames{5};
 
-  double minSim3ReprojectionError = 20.0f; // original is 9.210f
-  int minSim3Matches{6};        // map points matches for key points
-  int minTotalSim3Matches{12};  // key points matches
+  int minNumMPMatches{15};  // mininum number of MP matches in the not connected frames
 
   // The minimum possible parallax value to perform triangulation:
   // how much map points will be created

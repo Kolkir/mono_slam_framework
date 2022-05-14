@@ -27,13 +27,15 @@
 #include "Converter.h"
 #include "FeatureMatcher.h"
 #include "Initializer.h"
+#include "KeyFrame.h"
+#include "LocalMapping.h"
 #include "LoopClosing.h"
 #include "Map.h"
 #include "MapDrawer.h"
 #include "MapPoint.h"
 #include "Optimizer.h"
 #include "PnPsolver.h"
-#include "Sim3Solver.h"
+#include "KeyFrameDatabase.h"
 
 using namespace std;
 
@@ -574,7 +576,8 @@ bool Tracking::NeedNewKeyFrame() {
                    mnMatchesInliers > mMinLocalMatchCount);
 
   auto newKeyFrameCoeff = (nRefMatches * thRefRatio + 0.0) / mnMatchesInliers;
-  std::cout << "New KeyFrame coeff - " << newKeyFrameCoeff << ", shoule be > 1 to create new KF" << std::endl;
+  std::cout << "New KeyFrame coeff - " << newKeyFrameCoeff
+            << ", shoule be > 1 to create new KF" << std::endl;
 
   if ((c1a || c1b) && c2) {
     return true;

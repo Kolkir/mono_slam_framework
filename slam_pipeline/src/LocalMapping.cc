@@ -21,10 +21,12 @@
 #include "LocalMapping.h"
 
 #include "FeatureMatcher.h"
+#include "KeyFrame.h"
 #include "KeyPointMap.h"
 #include "LoopClosing.h"
-#include "Optimizer.h"
+#include "Map.h"
 #include "MapPoint.h"
+#include "Optimizer.h"
 
 namespace SLAM_PIPELINE {
 

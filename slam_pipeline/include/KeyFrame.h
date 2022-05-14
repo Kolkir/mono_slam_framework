@@ -109,7 +109,6 @@ class SLAM_PIPELINE_EXPORT KeyFrame
 
   // Variables used by the keyframe database
   long unsigned int mnLoopQuery;
-  size_t mnLoopMatches;
 
   long unsigned int mnRelocQuery;
   float mRelocScore;

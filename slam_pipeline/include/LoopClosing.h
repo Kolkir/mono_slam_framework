@@ -21,36 +21,16 @@
 #ifndef LOOPCLOSING_H
 #define LOOPCLOSING_H
 
-#include "FeatureMatcher.h"
-#include "KeyFrame.h"
-#include "KeyFrameDatabase.h"
-#include "LocalMapping.h"
-#include "Map.h"
-#include "Tracking.h"
+#include <list>
 
-#ifdef _MSC_VER
-#pragma warning(push, 0)
-#else
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wall"
-#pragma clang diagnostic ignored "-Wextra"
-#endif
-
-#include <g2o/types/sim3/types_seven_dof_expmap.h>
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#else
-#pragma clang diagnostic pop
-#endif
+#include "SlamParameters.h"
+#include "types.h"
 
 namespace SLAM_PIPELINE {
-
-typedef std::pair<std::set<KeyFramePtr>, int> ConsistentGroup;
-typedef std::map<
-    KeyFramePtr, g2o::Sim3, std::less<KeyFramePtr>,
-    Eigen::aligned_allocator<std::pair<KeyFramePtr const, g2o::Sim3> > >
-    KeyFrameAndPose;
+class Map;
+class FeatureMatcher;
+class KeyFrameDatabase;
+class LocalMapping;
 
 class LoopClosing {
  public:
@@ -69,14 +49,10 @@ class LoopClosing {
   // This function will run in a separate thread
   void RunGlobalBundleAdjustment(unsigned long nLoopKF);
 
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
  protected:
   bool CheckNewKeyFrames();
 
   bool DetectLoop();
-
-  bool ComputeSim3();
 
   void CorrectLoop();
 
@@ -88,19 +64,11 @@ class LoopClosing {
 
   std::list<KeyFramePtr> mlpLoopKeyFrameQueue;
 
-  // Loop detector parameters
-  float mnCovisibilityConsistencyTh;
+  size_t mMinNumMPMatches{15};
 
   // Loop detector variables
   KeyFramePtr mpCurrentKF;
   KeyFramePtr mpMatchedKF;
-  std::vector<ConsistentGroup> mvConsistentGroups;
-  std::vector<KeyFramePtr> mvpEnoughConsistentCandidates;
-  std::vector<KeyFramePtr> mvpCurrentConnectedKFs;
-  MatchFramesResult mvpCurrentMatchedPoints;
-  KeyPointMap mvpLoopMapPoints;
-  cv::Mat mScw;
-  g2o::Sim3 mg2oScw;
 
   long unsigned int mLastLoopKFid;
 
@@ -108,9 +76,6 @@ class LoopClosing {
   const bool mbFixScale{false};
 
   int mLoopDetectionMaxFrames{10};
-  int mMinSim3Matches{20};
-  int mMinTotalSim3Matches{40};
-  double mMinSim3ReprojectionError{9.210};
 
   bool mnFullBAIdx;
 

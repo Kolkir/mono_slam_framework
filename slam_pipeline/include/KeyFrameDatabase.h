@@ -21,8 +21,8 @@ class SLAM_PIPELINE_EXPORT KeyFrameDatabase {
 
   virtual void clear() = 0;
 
-  virtual std::vector<KeyFramePtr> DetectLoopCandidates(
-      KeyFrame& pKF, size_t minNumCovisibleMatches) = 0;
+  virtual KeyFramePtr DetectLoopCandidate(KeyFrame& pKF,
+                                          size_t minNumMPMatches) = 0;
 
   virtual std::vector<KeyFramePtr> DetectRelocalizationCandidates(
       FrameBase& pF) = 0;
@@ -39,8 +39,8 @@ class SLAM_PIPELINE_EXPORT KeyFrameMatchDatabase : public KeyFrameDatabase {
 
   void clear() override;
 
-  std::vector<KeyFramePtr> DetectLoopCandidates(
-      KeyFrame& pKF, size_t minNumCovisibleMatches) override;
+  KeyFramePtr DetectLoopCandidate(KeyFrame& pKF,
+                                  size_t minNumMPMatches) override;
 
   std::vector<KeyFramePtr> DetectRelocalizationCandidates(
       FrameBase& pF) override;
