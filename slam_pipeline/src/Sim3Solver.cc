@@ -27,58 +27,58 @@
 
 #include "FeatureMatcher.h"
 #include "KeyFrame.h"
+#include "MapPoint.h"
 
 namespace SLAM_PIPELINE {
 
-Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2,
-                       const MatchFramesResult &matchResult,
-                       const bool bFixScale)
-    : mnIterations(0), mnBestInliers(0), mbFixScale(bFixScale) {
-  auto vpKeyFrameMP1 = pKF1->GetMapPointMatches();
+Sim3Solver::Sim3Solver(const MatchFramesResult &matchResult,
+                       double minSim3ReprojectionError)
+    : mnIterations(0),
+      mnBestInliers(0),
+      mMinSim3ReprojectionError(minSim3ReprojectionError) {
+  mNumKeyPointMatches = static_cast<int>(matchResult.GetNumMatches());
 
-  mN1 = static_cast<int>(matchResult.GetNumMatches());
+  mvX3Dc1.reserve(mNumKeyPointMatches);
+  mvX3Dc2.reserve(mNumKeyPointMatches);
 
-  mvpMapPoints1.reserve(mN1);
-  mvpMapPoints2.reserve(mN1);
-  mvnIndices1.reserve(mN1);
-  mvX3Dc1.reserve(mN1);
-  mvX3Dc2.reserve(mN1);
+  cv::Mat Rcw1 = matchResult.pF1->GetRotation();
+  cv::Mat tcw1 = matchResult.pF1->GetTranslation();
+  cv::Mat Rcw2 = matchResult.pF2->GetRotation();
+  cv::Mat tcw2 = matchResult.pF2->GetTranslation();
 
-  cv::Mat Rcw1 = pKF1->GetRotation();
-  cv::Mat tcw1 = pKF1->GetTranslation();
-  cv::Mat Rcw2 = pKF2->GetRotation();
-  cv::Mat tcw2 = pKF2->GetTranslation();
-
-  mvAllIndices.reserve(mN1);
+  mvAllIndices.reserve(mNumKeyPointMatches);
 
   size_t idx = 0;
-  for (int i1 = 0; i1 < mN1; i1++) {
-    MapPoint *pMP1 = matchResult.GetMapPoint1(i1);
-    MapPoint *pMP2 = matchResult.GetMapPoint2(i1);
+  cv::Mat noise(3, 1, CV_32F);
+  for (int i = 0; i < mNumKeyPointMatches; i++) {
+    MapPointPtr pMP1 = matchResult.GetMapPoint1(i);
+    MapPointPtr pMP2 = matchResult.GetMapPoint2(i);
 
-    if (!pMP1) continue;
+    if (!pMP1 || !pMP2) continue;
 
     if (pMP1->isBad() || pMP2->isBad()) continue;
-
-    mvnMaxError1.push_back(9.210f);
-    mvnMaxError2.push_back(9.210f);
-
-    mvpMapPoints1.push_back(pMP1);
-    mvpMapPoints2.push_back(pMP2);
-    mvnIndices1.push_back(i1);
 
     cv::Mat X3D1w = pMP1->GetWorldPos();
     mvX3Dc1.push_back(Rcw1 * X3D1w + tcw1);
 
     cv::Mat X3D2w = pMP2->GetWorldPos();
+    // if points are too close add some random noise
+    if (cv::norm(X3D1w, X3D2w, cv::NORM_L2) < 0.000001) {
+      cv::randn(cv::Scalar(0.0), cv::Scalar(0.001), noise);
+      X3D2w += noise;
+    }
+
     mvX3Dc2.push_back(Rcw2 * X3D2w + tcw2);
 
     mvAllIndices.push_back(idx);
     idx++;
   }
 
-  mK1 = pKF1->mK;
-  mK2 = pKF2->mK;
+  mNumMapPointMatches =
+      static_cast<int>(mvAllIndices.size());  // number of correspondences
+
+  mK1 = matchResult.pF1->mK;
+  mK2 = matchResult.pF2->mK;
 
   FromCameraToImage(mvX3Dc1, mvP1im1, mK1);
   FromCameraToImage(mvX3Dc2, mvP2im2, mK2);
@@ -92,17 +92,15 @@ void Sim3Solver::SetRansacParameters(double probability, int minInliers,
   mRansacMinInliers = minInliers;
   mRansacMaxIts = maxIterations;
 
-  N = static_cast<int>(mvpMapPoints1.size());  // number of correspondences
-
-  mvbInliersi.resize(N);
+  mvbInliersi.resize(mNumMapPointMatches);
 
   // Adjust Parameters according to number of correspondences
-  float epsilon = (float)mRansacMinInliers / N;
+  float epsilon = (float)mRansacMinInliers / mNumMapPointMatches;
 
   // Set RANSAC iterations according to probability, epsilon, and max iterations
   int nIterations;
 
-  if (mRansacMinInliers == N)
+  if (mRansacMinInliers == mNumMapPointMatches)
     nIterations = 1;
   else
     nIterations =
@@ -116,10 +114,10 @@ void Sim3Solver::SetRansacParameters(double probability, int minInliers,
 cv::Mat Sim3Solver::iterate(int nIterations, bool &bNoMore,
                             std::vector<bool> &vbInliers, int &nInliers) {
   bNoMore = false;
-  vbInliers = std::vector<bool>(mN1, false);
+  vbInliers = std::vector<bool>(mNumKeyPointMatches, false);
   nInliers = 0;
 
-  if (N < mRansacMinInliers) {
+  if (mNumMapPointMatches < mRansacMinInliers) {
     bNoMore = true;
     return cv::Mat();
   }
@@ -167,8 +165,8 @@ cv::Mat Sim3Solver::iterate(int nIterations, bool &bNoMore,
 
       if (mnInliersi > mRansacMinInliers) {
         nInliers = mnInliersi;
-        for (int i = 0; i < N; i++)
-          if (mvbInliersi[i]) vbInliers[mvnIndices1[i]] = true;
+        for (int i = 0; i < mNumMapPointMatches; i++)
+          if (mvbInliersi[i]) vbInliers[i] = true;
         return mBestT12;
       }
     }
@@ -261,22 +259,19 @@ void Sim3Solver::ComputeSim3(cv::Mat &P1, cv::Mat &P2) {
 
   // Step 6: Scale
 
-  if (!mbFixScale) {
-    double nom = Pr1.dot(P3);
-    cv::Mat aux_P3(P3.size(), P3.type());
-    aux_P3 = P3;
-    cv::pow(P3, 2, aux_P3);
-    double den = 0;
+  double nom = Pr1.dot(P3);
+  cv::Mat aux_P3(P3.size(), P3.type());
+  aux_P3 = P3;
+  cv::pow(P3, 2, aux_P3);
+  double den = 0;
 
-    for (int i = 0; i < aux_P3.rows; i++) {
-      for (int j = 0; j < aux_P3.cols; j++) {
-        den += aux_P3.at<float>(i, j);
-      }
+  for (int i = 0; i < aux_P3.rows; i++) {
+    for (int j = 0; j < aux_P3.cols; j++) {
+      den += aux_P3.at<float>(i, j);
     }
+  }
 
-    ms12i = static_cast<float>(nom / den);
-  } else
-    ms12i = 1.0f;
+  ms12i = static_cast<float>(nom / den);
 
   // Step 7: Translation
 
@@ -315,10 +310,10 @@ void Sim3Solver::CheckInliers() {
     cv::Mat dist1 = mvP1im1[i] - vP2im1[i];
     cv::Mat dist2 = vP1im2[i] - mvP2im2[i];
 
-    const float err1 = static_cast<float>(dist1.dot(dist1));
-    const float err2 = static_cast<float>(dist2.dot(dist2));
+    const auto err1 = dist1.dot(dist1);
+    const auto err2 = dist2.dot(dist2);
 
-    if (err1 < mvnMaxError1[i] && err2 < mvnMaxError2[i]) {
+    if (err1 < mMinSim3ReprojectionError && err2 < mMinSim3ReprojectionError) {
       mvbInliersi[i] = true;
       mnInliersi++;
     } else

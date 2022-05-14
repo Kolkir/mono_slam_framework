@@ -16,7 +16,9 @@
 #pragma clang diagnostic pop
 #endif
 
+#include "KeyFrame.h"
 #include "Map.h"
+#include "MapPoint.h"
 
 namespace SLAM_PIPELINE {
 

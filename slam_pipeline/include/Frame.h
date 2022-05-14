@@ -24,16 +24,11 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
+#include "types.h"
 #include "FrameBase.h"
-#include "KeyFrame.h"
-#include "KeyPointMap.h"
-#include "MapPoint.h"
 #include "slam_pipeline_export.h"
 
 namespace SLAM_PIPELINE {
-class MapPoint;
-class KeyFrame;
-class FrameFactory;
 
 class SLAM_PIPELINE_EXPORT Frame : public FrameBase {
  protected:
@@ -52,15 +47,14 @@ class SLAM_PIPELINE_EXPORT Frame : public FrameBase {
   long unsigned int id() const override;
 
   // Check if a MapPoint is in the frustum of the camera
-  // and fill variables of the MapPoint to be used by the tracking
-  bool isInFrustum(MapPoint *pMP, float viewingCosLimit);
+  bool isInFrustum(const MapPoint& MP, float viewingCosLimit);
 
  public:
   // Frame timestamp.
   double mTimeStamp;
 
   // Reference Keyframe.
-  KeyFrame *mpReferenceKF;
+  KeyFramePtr mpReferenceKF;
 
  private:
   // Current and Next Frame id.
@@ -71,9 +65,9 @@ class SLAM_PIPELINE_EXPORT Frame : public FrameBase {
 class SLAM_PIPELINE_EXPORT FrameFactory {
  public:
   virtual ~FrameFactory() {}
-  virtual Frame *Create(const cv::Mat &imGray, const double &timeStamp,
-                        cv::Mat &K) const;
-  virtual Frame *Clone(Frame *frame) const;
+  virtual FramePtr Create(const cv::Mat &imGray, const double &timeStamp,
+                          cv::Mat &K) const;
+  virtual FramePtr Clone(const Frame& frame) const;
 };
 
 }  // namespace SLAM_PIPELINE

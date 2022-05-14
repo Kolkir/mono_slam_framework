@@ -20,13 +20,22 @@
 
 #include "MapPoint.h"
 
-#include "FeatureMatcher.h"
+#include "Frame.h"
+#include "KeyFrame.h"
+#include "Map.h"
 
 namespace SLAM_PIPELINE {
 
+bool operator<(const KeyFramePtr& lhs, const KeyFrame* rhs) {
+  return std::less<const KeyFrame*>()(lhs.get(), rhs);
+}
+bool operator<(const KeyFrame* lhs, const KeyFramePtr& rhs) {
+  return std::less<const KeyFrame*>()(lhs, rhs.get());
+}
+
 long unsigned int MapPoint::nNextId = 0;
 
-MapPoint::MapPoint(const cv::Mat& Pos, KeyFrame* pRefKF, Map* pMap)
+MapPoint::MapPoint(const cv::Mat& Pos, KeyFramePtr pRefKF, Map* pMap)
     : mnFirstKFid(pRefKF->id()),
       mnFirstFrame(pRefKF->mnFrameId),
       nObs(0),
@@ -42,7 +51,6 @@ MapPoint::MapPoint(const cv::Mat& Pos, KeyFrame* pRefKF, Map* pMap)
       mnVisible(1),
       mnFound(1),
       mbBad(false),
-      mpReplaced(static_cast<MapPoint*>(NULL)),
       mfDistance(0),
       mpMap(pMap) {
   Pos.copyTo(mWorldPos);
@@ -50,9 +58,9 @@ MapPoint::MapPoint(const cv::Mat& Pos, KeyFrame* pRefKF, Map* pMap)
   mnId = nNextId++;
 }
 
-MapPoint::MapPoint(const cv::Mat& Pos, Map* pMap, Frame* pFrame)
+MapPoint::MapPoint(const cv::Mat& Pos, Map* pMap, const Frame& frame)
     : mnFirstKFid(-1),
-      mnFirstFrame(pFrame->id()),
+      mnFirstFrame(frame.id()),
       nObs(0),
       mnTrackReferenceForFrame(0),
       mnLastFrameSeen(0),
@@ -62,14 +70,12 @@ MapPoint::MapPoint(const cv::Mat& Pos, Map* pMap, Frame* pFrame)
       mnCorrectedByKF(0),
       mnCorrectedReference(0),
       mnBAGlobalForKF(0),
-      mpRefKF(static_cast<KeyFrame*>(NULL)),
       mnVisible(1),
       mnFound(1),
       mbBad(false),
-      mpReplaced(NULL),
       mpMap(pMap) {
   Pos.copyTo(mWorldPos);
-  cv::Mat Ow = pFrame->GetCameraCenter();
+  cv::Mat Ow = frame.GetCameraCenter();
   mNormalVector = mWorldPos - Ow;
   mNormalVector = mNormalVector / cv::norm(mNormalVector);
 
@@ -83,19 +89,19 @@ MapPoint::MapPoint(const cv::Mat& Pos, Map* pMap, Frame* pFrame)
 
 void MapPoint::SetWorldPos(const cv::Mat& Pos) { Pos.copyTo(mWorldPos); }
 
-cv::Mat MapPoint::GetWorldPos() { return mWorldPos.clone(); }
+cv::Mat MapPoint::GetWorldPos() const { return mWorldPos.clone(); }
 
-cv::Mat MapPoint::GetNormal() { return mNormalVector.clone(); }
+cv::Mat MapPoint::GetNormal() const { return mNormalVector.clone(); }
 
-KeyFrame* MapPoint::GetReferenceKeyFrame() { return mpRefKF; }
+KeyFramePtr MapPoint::GetReferenceKeyFrame() { return mpRefKF; }
 
-void MapPoint::AddObservation(KeyFrame* pKF, const cv::Point2i& keyPoint) {
+void MapPoint::AddObservation(KeyFramePtr pKF, const cv::Point2i& keyPoint) {
   if (mObservations.count(pKF)) return;
   mObservations[pKF] = keyPoint;
   nObs++;
 }
 
-void MapPoint::EraseObservation(KeyFrame* pKF) {
+void MapPoint::EraseObservation(KeyFramePtr pKF) {
   bool bBad = false;
   if (mObservations.count(pKF)) {
     auto key = mObservations[pKF];
@@ -112,33 +118,31 @@ void MapPoint::EraseObservation(KeyFrame* pKF) {
   if (bBad) SetBadFlag();
 }
 
-const std::map<KeyFrame*, cv::Point2i>& MapPoint::GetObservations() {
+const MapPoint::ObservationsMap& MapPoint::GetObservations() {
   return mObservations;
 }
 
 int MapPoint::Observations() { return nObs; }
 
 void MapPoint::SetBadFlag() {
-  std::map<KeyFrame*, cv::Point2i> obs;
   mbBad = true;
-  obs = mObservations;
+  auto obs = mObservations;
   mObservations.clear();
   for (auto mit = obs.begin(), mend = obs.end(); mit != mend; mit++) {
-    KeyFrame* pKF = mit->first;
+    KeyFramePtr pKF = mit->first;
     pKF->EraseMapPointMatch(mit->second);
   }
 
   mpMap->EraseMapPoint(this);
 }
 
-MapPoint* MapPoint::GetReplaced() { return mpReplaced; }
+MapPointPtr MapPoint::GetReplaced() { return mpReplaced; }
 
-void MapPoint::Replace(MapPoint* pMP) {
+void MapPoint::Replace(MapPointPtr pMP) {
   if (pMP->mnId == this->mnId) return;
 
   int nvisible, nfound;
-  std::map<KeyFrame*, cv::Point2i> obs;
-  obs = mObservations;
+  auto obs = mObservations;
   mObservations.clear();
   mbBad = true;
   nvisible = mnVisible;
@@ -147,7 +151,7 @@ void MapPoint::Replace(MapPoint* pMP) {
 
   for (auto mit = obs.begin(), mend = obs.end(); mit != mend; mit++) {
     // Replace measurement in keyframe
-    KeyFrame* pKF = mit->first;
+    KeyFramePtr pKF = mit->first;
 
     if (!pMP->IsInKeyFrame(pKF)) {
       pKF->ReplaceMapPointMatch(mit->second, pMP);
@@ -172,34 +176,36 @@ float MapPoint::GetFoundRatio() {
   return static_cast<float>(mnFound) / mnVisible;
 }
 
-bool MapPoint::GetKeyPointInKeyFrame(KeyFrame* pKF, cv::Point2i& keyPoint) {
-  if (mObservations.count(pKF)) {
-    keyPoint = mObservations[pKF];
+bool MapPoint::GetKeyPointInKeyFrame(const KeyFrame* pKF,
+                                     cv::Point2i& keyPoint) const {
+  auto i = mObservations.find(pKF);
+  if (i != mObservations.end()) {
+    keyPoint = i->second;
     return true;
   } else
     return false;
 }
 
-bool MapPoint::IsInKeyFrame(KeyFrame* pKF) {
-  return (mObservations.count(pKF));
+bool MapPoint::IsInKeyFrame(const KeyFrame* pKF) const {
+  return mObservations.count(pKF);
+}
+
+bool MapPoint::IsInKeyFrame(KeyFramePtr pKF) const {
+  return mObservations.count(pKF);
 }
 
 void MapPoint::UpdateNormalAndDepth() {
-  std::map<KeyFrame*, cv::Point2i> observations;
-  KeyFrame* pRefKF;
-  cv::Mat Pos;
   if (mbBad) return;
-  observations = mObservations;
-  pRefKF = mpRefKF;
-  Pos = mWorldPos.clone();
-
+  auto observations = mObservations;
   if (observations.empty()) return;
+  auto pRefKF = mpRefKF;
+  auto Pos = mWorldPos.clone();
 
   cv::Mat normal = cv::Mat::zeros(3, 1, CV_32F);
   int n = 0;
   for (auto mit = observations.begin(), mend = observations.end(); mit != mend;
        mit++) {
-    KeyFrame* pKF = mit->first;
+    auto pKF = mit->first;
     cv::Mat Owi = pKF->GetCameraCenter();
     cv::Mat normali = mWorldPos - Owi;
     normal = normal + normali / cv::norm(normali);
@@ -213,8 +219,6 @@ void MapPoint::UpdateNormalAndDepth() {
   mNormalVector = normal / n;
 }
 
-float MapPoint::GetDistanceInvariance() {
-  return 1.2f * mfDistance;
-}
+float MapPoint::GetDistanceInvariance() const { return 1.2f * mfDistance; }
 
 }  // namespace SLAM_PIPELINE

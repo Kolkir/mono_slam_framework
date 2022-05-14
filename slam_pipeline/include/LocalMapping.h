@@ -21,28 +21,29 @@
 #ifndef LOCALMAPPING_H
 #define LOCALMAPPING_H
 
-#include "KeyFrame.h"
-#include "KeyFrameDatabase.h"
-#include "Map.h"
+#include <list>
+
 #include "slam_pipeline_export.h"
+#include "types.h"
 
 namespace SLAM_PIPELINE {
 
 class LoopClosing;
 class Map;
-struct FeatureParameters;
+class FeatureMatcher;
+struct SlamParameters;
 
 class SLAM_PIPELINE_EXPORT LocalMapping {
  public:
   LocalMapping(Map* pMap, FeatureMatcher* featureMatcher,
-               const FeatureParameters& parameters);
+               const SlamParameters& parameters);
 
   void SetLoopCloser(LoopClosing* pLoopCloser);
 
   // Main function
   void Run();
 
-  void InsertKeyFrame(KeyFrame* pKF);
+  void InsertKeyFrame(KeyFramePtr pKF);
 
   void Reset();
   void Release();
@@ -63,11 +64,11 @@ class SLAM_PIPELINE_EXPORT LocalMapping {
 
   LoopClosing* mpLoopCloser;
 
-  std::list<KeyFrame*> mlNewKeyFrames;
+  std::list<KeyFramePtr> mlNewKeyFrames;
 
-  KeyFrame* mpCurrentKeyFrame;
+  KeyFramePtr mpCurrentKeyFrame;
 
-  std::list<MapPoint*> mlpRecentAddedMapPoints;
+  std::list<MapPointPtr> mlpRecentAddedMapPoints;
 
   FeatureMatcher* mFeatureMatcher;
 

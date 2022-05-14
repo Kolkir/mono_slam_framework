@@ -13,7 +13,30 @@
 
 #include "dnnfeaturematcher.h"
 #include "featurematcher.h"
+#include "slam_pipeline/include/Frame.h"
+#include "slam_pipeline/include/KeyFrame.h"
+#include "slam_pipeline/include/KeyFrameDatabase.h"
 #include "slam_pipeline/include/System.h"
+
+class GammaCorrector {
+ public:
+  GammaCorrector(double gamma) : gamma(gamma) {
+    lookUpTable = cv::Mat(1, 256, CV_8U);
+    uchar* p = lookUpTable.ptr();
+    for (int i = 0; i < 256; ++i)
+      p[i] = cv::saturate_cast<uchar>(pow(i / 255.0, gamma) * 255.0);
+  }
+
+  cv::Mat correct(const cv::Mat& img) {
+    cv::Mat res = img.clone();
+    cv::LUT(img, lookUpTable, res);
+    return res;
+  }
+
+ private:
+  cv::Mat lookUpTable;
+  double gamma;
+};
 
 using namespace webots;
 int main(int /*argc*/, char** /*argv*/) {
@@ -40,9 +63,9 @@ int main(int /*argc*/, char** /*argv*/) {
   // featureMatcher.SetThreshold(0.1f);
 
   FeatureMatcher featureMatcher;
-  featureMatcher.SetThreshold(0.7f);
+  featureMatcher.SetThreshold(0.6f);
 
-  slam::FeatureParameters slam_parameters;
+  slam::SlamParameters slam_parameters;
   slam_parameters.cx = static_cast<float>(camera->getWidth() / 2);
   slam_parameters.cy = static_cast<float>(camera->getHeight() / 2);
   auto hFov = camera->getFov();
@@ -84,6 +107,7 @@ int main(int /*argc*/, char** /*argv*/) {
   size_t img_size = img.total() * img.elemSize();
   std::future<cv::Mat> slam_track_result;
 
+  GammaCorrector gammaCorrector(1.0);
   const double MAX_SPEED = 2.0;
   double left_speed = 0.0;
   double right_speed = 0.0;
@@ -93,6 +117,7 @@ int main(int /*argc*/, char** /*argv*/) {
     if (img_data) {
       std::memcpy(img.data, img_data, img_size);
       cv::cvtColor(img, img_gray, cv::COLOR_BGRA2GRAY);
+      //img_gray = gammaCorrector.correct(img_gray);
 
       auto slam_tracking = [&]() {
         auto time_stamp = std::chrono::high_resolution_clock::now();
@@ -102,10 +127,12 @@ int main(int /*argc*/, char** /*argv*/) {
         return slam_system.GetCurrentMatchImage();
       };
 
+      // out_img = slam_tracking();
       if (!slam_track_result.valid()) {
         slam_track_result = std::async(std::launch::async, slam_tracking);
       } else {
-        auto status = slam_track_result.wait_for(std::chrono::milliseconds(time_step));
+        auto status =
+            slam_track_result.wait_for(std::chrono::milliseconds(time_step));
         if (status == std::future_status::ready) {
           out_img = slam_track_result.get();
           slam_track_result = std::async(std::launch::async, slam_tracking);
@@ -154,6 +181,7 @@ int main(int /*argc*/, char** /*argv*/) {
     wheels[3]->setVelocity(right_speed);
   };
 
+  std::cout << "Controller is stopped, stopping SLAM ..." << std::endl;
   slam_system.StopGUI();
 
   return 0;

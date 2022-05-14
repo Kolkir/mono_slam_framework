@@ -38,20 +38,17 @@
 #endif
 
 #include "slam_pipeline_export.h"
-
-#include "FeatureMatcher.h"
-#include "Frame.h"
-#include "KeyFrame.h"
-#include "LoopClosing.h"
-#include "Map.h"
-#include "MapPoint.h"
+#include "types.h"
 
 namespace SLAM_PIPELINE {
 
+class Map;
+struct MatchFramesResult;
+
 class SLAM_PIPELINE_EXPORT Optimizer {
  public:
-  void static BundleAdjustment(const std::vector<KeyFrame *> &vpKF,
-                               const std::vector<MapPoint *> &vpMP,
+  void static BundleAdjustment(const std::vector<KeyFramePtr> &vpKF,
+                               const std::vector<MapPointPtr> &vpMP,
                                int nIterations = 5, bool *pbStopFlag = NULL,
                                const unsigned long nLoopKF = 0,
                                const bool bRobust = true);
@@ -59,17 +56,8 @@ class SLAM_PIPELINE_EXPORT Optimizer {
                                      bool *pbStopFlag = NULL,
                                      const unsigned long nLoopKF = 0,
                                      const bool bRobust = true);
-  void static LocalBundleAdjustment(KeyFrame *pKF, bool *pbStopFlag);
-  int static PoseOptimization(Frame *pFrame);
-
-  // if bFixScale is true, 6DoF optimization (stereo,rgbd), 7DoF otherwise
-  // (mono)
-  void static OptimizeEssentialGraph(
-      Map *pMap, KeyFrame *pLoopKF, KeyFrame *pCurKF,
-      const KeyFrameAndPose &NonCorrectedSim3,
-      const KeyFrameAndPose &CorrectedSim3,
-      const std::map<KeyFrame *, std::set<KeyFrame *> > &LoopConnections,
-      const bool &bFixScale);
+  void static LocalBundleAdjustment(KeyFramePtr pKF, bool *pbStopFlag);
+  int static PoseOptimization(FramePtr pFrame);
 
   // if bFixScale is true, optimize SE3 (stereo,rgbd), Sim3 otherwise (mono)
   static int OptimizeSim3(MatchFramesResult &vpMatches1, g2o::Sim3 &g2oS12,

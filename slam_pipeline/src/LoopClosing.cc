@@ -21,6 +21,7 @@
 #include "LoopClosing.h"
 
 #include "Converter.h"
+#include "MapPoint.h"
 #include "Optimizer.h"
 #include "Sim3Solver.h"
 
@@ -28,18 +29,18 @@ namespace SLAM_PIPELINE {
 
 LoopClosing::LoopClosing(Map* pMap, KeyFrameDatabase* pDB,
                          FeatureMatcher* featureMatcher,
-                         const FeatureParameters& parameters)
+                         const SlamParameters& parameters)
     : mpMap(pMap),
       mpKeyFrameDB(pDB),
       mpMatchedKF(NULL),
       mLastLoopKFid(0),
       mnFullBAIdx(false),
       mFeatureMatcher(featureMatcher) {
-  mbFixScale = parameters.bFixScale;
   mnCovisibilityConsistencyTh = parameters.nCovisibilityConsistencyTh;
   mLoopDetectionMaxFrames = parameters.loopDetectionMaxFrames;
   mMinSim3Matches = parameters.minSim3Matches;
   mMinTotalSim3Matches = parameters.minTotalSim3Matches;
+  mMinSim3ReprojectionError = parameters.minSim3ReprojectionError;
 }
 
 void LoopClosing::SetLocalMapper(LocalMapping* pLocalMapper) {
@@ -61,7 +62,7 @@ void LoopClosing::Run() {
   }
 }
 
-void LoopClosing::InsertKeyFrame(KeyFrame* pKF) {
+void LoopClosing::InsertKeyFrame(KeyFramePtr pKF) {
   if (pKF->id() != 0) mlpLoopKeyFrameQueue.push_back(pKF);
 }
 
@@ -85,28 +86,25 @@ bool LoopClosing::DetectLoop() {
   }
 
   // Compute reference similarity score
-  // This is the lowest num matches to a connected keyframe in the covisibility graph
-  // We will impose loop candidates to have a higher similarity than this
-  const std::vector<KeyFrame*> vpConnectedKeyFrames =
+  // This is the lowest num matches to a connected keyframe in the covisibility
+  // graph We will impose loop candidates to have a higher similarity than this
+  const std::vector<KeyFramePtr> vpConnectedKeyFrames =
       mpCurrentKF->GetVectorCovisibleKeyFrames();
-  size_t minNumCovisibleMatches = 1;
-  bool newSearch = true;
+  size_t minNumCovisibleMatches = std::numeric_limits<size_t>::max();
   for (size_t i = 0; i < vpConnectedKeyFrames.size(); i++) {
-    KeyFrame* pKF = vpConnectedKeyFrames[i];
+    KeyFramePtr pKF = vpConnectedKeyFrames[i];
     if (pKF->isBad()) continue;
-    auto matchResult = mFeatureMatcher->MatchFrames(mpCurrentKF, pKF);
+    auto matchResult = mFeatureMatcher->MatchFrames(*mpCurrentKF, *pKF);
     auto numMatches = matchResult.GetNumMatches();
-    if (newSearch) {
-      minNumCovisibleMatches = numMatches;
-      newSearch = false;
-    }
     if (numMatches < minNumCovisibleMatches)
       minNumCovisibleMatches = numMatches;
   }
 
+  minNumCovisibleMatches = minNumCovisibleMatches / 2;
+
   // Query the database imposing the minimum num matches
-  std::vector<KeyFrame*> vpCandidateKFs =
-      mpKeyFrameDB->DetectLoopCandidates(mpCurrentKF, minNumCovisibleMatches);
+  std::vector<KeyFramePtr> vpCandidateKFs =
+      mpKeyFrameDB->DetectLoopCandidates(*mpCurrentKF, minNumCovisibleMatches);
 
   // If there are no loop candidates, just add new keyframe and return false
   if (vpCandidateKFs.empty()) {
@@ -115,81 +113,93 @@ bool LoopClosing::DetectLoop() {
     mpCurrentKF->SetErase();
     return false;
   }
+  /*
+    // For each loop candidate check consistency with previous loop candidates
+    // Each candidate expands a covisibility group (keyframes connected to the
+    // loop candidate in the covisibility graph) A group is consistent with a
+    // previous group if they share at least a keyframe We must detect a
+    // consistent loop in several consecutive keyframes to accept it
+    mvpEnoughConsistentCandidates.clear();
 
-  // For each loop candidate check consistency with previous loop candidates
-  // Each candidate expands a covisibility group (keyframes connected to the
-  // loop candidate in the covisibility graph) A group is consistent with a
-  // previous group if they share at least a keyframe We must detect a
-  // consistent loop in several consecutive keyframes to accept it
-  mvpEnoughConsistentCandidates.clear();
+    std::vector<ConsistentGroup> vCurrentConsistentGroups;
+    std::vector<bool> vbConsistentGroup(mvConsistentGroups.size(), false);
+    for (size_t i = 0, iend = vpCandidateKFs.size(); i < iend; i++) {
+      KeyFramePtr pCandidateKF = vpCandidateKFs[i];
 
-  std::vector<ConsistentGroup> vCurrentConsistentGroups;
-  std::vector<bool> vbConsistentGroup(mvConsistentGroups.size(), false);
-  for (size_t i = 0, iend = vpCandidateKFs.size(); i < iend; i++) {
-    KeyFrame* pCandidateKF = vpCandidateKFs[i];
+      std::set<KeyFramePtr> spCandidateGroup =
+          pCandidateKF->GetConnectedKeyFrames();
+      spCandidateGroup.insert(pCandidateKF);
 
-    std::set<KeyFrame*> spCandidateGroup =
-        pCandidateKF->GetConnectedKeyFrames();
-    spCandidateGroup.insert(pCandidateKF);
+      bool bEnoughConsistent = false;
+      bool bConsistentForSomeGroup = false;
+      for (size_t iG = 0, iendG = mvConsistentGroups.size(); iG < iendG; iG++) {
+        std::set<KeyFramePtr> sPreviousGroup = mvConsistentGroups[iG].first;
 
-    bool bEnoughConsistent = false;
-    bool bConsistentForSomeGroup = false;
-    for (size_t iG = 0, iendG = mvConsistentGroups.size(); iG < iendG; iG++) {
-      std::set<KeyFrame*> sPreviousGroup = mvConsistentGroups[iG].first;
+        bool bConsistent = false;
+        for (std::set<KeyFramePtr>::iterator sit = spCandidateGroup.begin(),
+                                           send = spCandidateGroup.end();
+             sit != send; sit++) {
+          if (sPreviousGroup.count(*sit)) {
+            bConsistent = true;
+            bConsistentForSomeGroup = true;
+            break;
+          }
+        }
 
-      bool bConsistent = false;
-      for (std::set<KeyFrame*>::iterator sit = spCandidateGroup.begin(),
-                                         send = spCandidateGroup.end();
-           sit != send; sit++) {
-        if (sPreviousGroup.count(*sit)) {
-          bConsistent = true;
-          bConsistentForSomeGroup = true;
-          break;
+        if (bConsistent) {
+          int nPreviousConsistency = mvConsistentGroups[iG].second;
+          int nCurrentConsistency = nPreviousConsistency + 1;
+          if (!vbConsistentGroup[iG]) {
+            ConsistentGroup cg = make_pair(spCandidateGroup,
+    nCurrentConsistency); vCurrentConsistentGroups.push_back(cg);
+            vbConsistentGroup[iG] =
+                true;  // this avoid to include the same group more than once
+          }
+          if (nCurrentConsistency >= mnCovisibilityConsistencyTh &&
+              !bEnoughConsistent) {
+            mvpEnoughConsistentCandidates.push_back(pCandidateKF);
+            bEnoughConsistent =
+                true;  // this avoid to insert the same candidate more than once
+          }
         }
       }
 
-      if (bConsistent) {
-        int nPreviousConsistency = mvConsistentGroups[iG].second;
-        int nCurrentConsistency = nPreviousConsistency + 1;
-        if (!vbConsistentGroup[iG]) {
-          ConsistentGroup cg = make_pair(spCandidateGroup, nCurrentConsistency);
-          vCurrentConsistentGroups.push_back(cg);
-          vbConsistentGroup[iG] =
-              true;  // this avoid to include the same group more than once
-        }
-        if (nCurrentConsistency >= mnCovisibilityConsistencyTh &&
-            !bEnoughConsistent) {
-          mvpEnoughConsistentCandidates.push_back(pCandidateKF);
-          bEnoughConsistent =
-              true;  // this avoid to insert the same candidate more than once
-        }
+      // If the group is not consistent with any previous group insert with
+      // consistency counter set to zero
+      if (!bConsistentForSomeGroup) {
+        ConsistentGroup cg = make_pair(spCandidateGroup, 0);
+        vCurrentConsistentGroups.push_back(cg);
       }
     }
 
-    // If the group is not consistent with any previous group insert with
-    // consistency counter set to zero
-    if (!bConsistentForSomeGroup) {
-      ConsistentGroup cg = make_pair(spCandidateGroup, 0);
-      vCurrentConsistentGroups.push_back(cg);
+    // Update Covisibility Consistent Groups
+    mvConsistentGroups = vCurrentConsistentGroups;
+
+    // Add Current Keyframe to database
+    mpKeyFrameDB->add(mpCurrentKF);
+
+    if ( .empty()) {
+      mpCurrentKF->SetErase();
+      return false;
+    } else {
+      return true;
     }
-  }
 
-  // Update Covisibility Consistent Groups
-  mvConsistentGroups = vCurrentConsistentGroups;
-
-  // Add Current Keyframe to database
-  mpKeyFrameDB->add(mpCurrentKF);
-
-  if (mvpEnoughConsistentCandidates.empty()) {
     mpCurrentKF->SetErase();
     return false;
-  } else {
-    return true;
+  */
+  /////////////////////////////////////////////////
+  for (size_t i = 0, iend = vpCandidateKFs.size(); i < iend; i++) {
+    KeyFramePtr pCandidateKF = vpCandidateKFs[i];
+    mvpEnoughConsistentCandidates.push_back(pCandidateKF);
   }
-
   mpCurrentKF->SetErase();
-  return false;
+  return true;
 }
+
+#ifdef _MSC_VER
+#pragma optimize("", off)
+#endif
 
 bool LoopClosing::ComputeSim3() {
   // For each consistent loop candidate we try to compute a Sim3
@@ -199,7 +209,7 @@ bool LoopClosing::ComputeSim3() {
   // We compute first matches for each candidate
   // If enough matches are found, we setup a Sim3Solver
 
-  std::vector<Sim3Solver*> vpSim3Solvers;
+  std::vector<std::unique_ptr<Sim3Solver>> vpSim3Solvers;
   vpSim3Solvers.resize(nInitialCandidates);
 
   std::vector<MatchFramesResult> vvpMapPointMatches;
@@ -211,7 +221,7 @@ bool LoopClosing::ComputeSim3() {
   int nCandidates = 0;  // candidates with enough matches
 
   for (int i = 0; i < nInitialCandidates; i++) {
-    KeyFrame* pKF = mvpEnoughConsistentCandidates[i];
+    KeyFramePtr pKF = mvpEnoughConsistentCandidates[i];
 
     // avoid that local mapping erase it while it is being processed in this
     // thread
@@ -222,17 +232,17 @@ bool LoopClosing::ComputeSim3() {
       continue;
     }
 
-    vvpMapPointMatches[i] = mFeatureMatcher->MatchFrames(mpCurrentKF, pKF);
+    vvpMapPointMatches[i] = mFeatureMatcher->MatchFrames(*mpCurrentKF, *pKF);
     auto nmatches = vvpMapPointMatches[i].GetNumMatches();
 
     if (nmatches < mMinSim3Matches) {
       vbDiscarded[i] = true;
       continue;
     } else {
-      Sim3Solver* pSolver =
-          new Sim3Solver(mpCurrentKF, pKF, vvpMapPointMatches[i], mbFixScale);
-      pSolver->SetRansacParameters(0.99, 20, 300);
-      vpSim3Solvers[i] = pSolver;
+      auto pSolver = std::make_unique<Sim3Solver>(vvpMapPointMatches[i],
+                                                  mMinSim3ReprojectionError);
+      pSolver->SetRansacParameters(0.99, mMinSim3Matches, 300);
+      vpSim3Solvers[i] = std::move(pSolver);
     }
 
     nCandidates++;
@@ -251,7 +261,7 @@ bool LoopClosing::ComputeSim3() {
       bool bNoMore = false;
       cv::Mat Scm;
 
-      Sim3Solver* pSolver = vpSim3Solvers[i];
+      auto pSolver = vpSim3Solvers[i].get();
       {
         int nInliers;
         Scm = pSolver->iterate(5, bNoMore, vbInliers, nInliers);
@@ -268,7 +278,7 @@ bool LoopClosing::ComputeSim3() {
       if (!Scm.empty()) {
         auto vpMapPointMatches = vvpMapPointMatches[i];
         for (size_t j = 0, jend = vbInliers.size(); j < jend; j++) {
-          if (vbInliers[j]) {
+          if (!vbInliers[j]) {
             vpMapPointMatches.DeleteMatch(j);
           }
         }
@@ -292,6 +302,9 @@ bool LoopClosing::ComputeSim3() {
 
           mvpCurrentMatchedPoints = vpMapPointMatches;
           break;
+        } else {
+          vbDiscarded[i] = true;
+          nCandidates--;
         }
       }
     }
@@ -337,14 +350,14 @@ void LoopClosing::CorrectLoop() {
   CorrectedSim3[mpCurrentKF] = mg2oScw;
   cv::Mat Twc = mpCurrentKF->GetPoseInverse();
 
-  for (std::vector<KeyFrame*>::iterator vit = mvpCurrentConnectedKFs.begin(),
-                                        vend = mvpCurrentConnectedKFs.end();
+  for (std::vector<KeyFramePtr>::iterator vit = mvpCurrentConnectedKFs.begin(),
+                                          vend = mvpCurrentConnectedKFs.end();
        vit != vend; vit++) {
-    KeyFrame* pKFi = *vit;
+    KeyFramePtr pConnectedKFi = *vit;
 
-    cv::Mat Tiw = pKFi->GetPose();
+    cv::Mat Tiw = pConnectedKFi->GetPose();
 
-    if (pKFi != mpCurrentKF) {
+    if (pConnectedKFi != mpCurrentKF) {
       cv::Mat Tic = Tiw * Twc;
       cv::Mat Ric = Tic.rowRange(0, 3).colRange(0, 3);
       cv::Mat tic = Tic.rowRange(0, 3).col(3);
@@ -352,22 +365,22 @@ void LoopClosing::CorrectLoop() {
                        1.0);
       g2o::Sim3 g2oCorrectedSiw = g2oSic * mg2oScw;
       // Pose corrected with the Sim3 of the loop closure
-      CorrectedSim3[pKFi] = g2oCorrectedSiw;
+      CorrectedSim3[pConnectedKFi] = g2oCorrectedSiw;
     }
 
     cv::Mat Riw = Tiw.rowRange(0, 3).colRange(0, 3);
     cv::Mat tiw = Tiw.rowRange(0, 3).col(3);
-    g2o::Sim3 g2oSiw(Converter::toMatrix3d(Riw), Converter::toVector3d(tiw),
-                     1.0);
+    g2o::Sim3 nonCorrected_g2oSiw(Converter::toMatrix3d(Riw),
+                                  Converter::toVector3d(tiw), 1.0);
     // Pose without correction
-    NonCorrectedSim3[pKFi] = g2oSiw;
+    NonCorrectedSim3[pConnectedKFi] = nonCorrected_g2oSiw;
 
     // Correct all MapPoints obsrved by current keyframe and neighbors, so that
     // they align with the other side of the loop
     for (KeyFrameAndPose::iterator mit = CorrectedSim3.begin(),
                                    mend = CorrectedSim3.end();
          mit != mend; mit++) {
-      KeyFrame* pKFi = mit->first;
+      KeyFramePtr pKFi = mit->first;
       g2o::Sim3 g2oCorrectedSiw = mit->second;
       g2o::Sim3 g2oCorrectedSwi = g2oCorrectedSiw.inverse();
 
@@ -376,7 +389,7 @@ void LoopClosing::CorrectLoop() {
       auto vpMPsi = pKFi->GetMapPointMatches();
       for (auto iMP = vpMPsi.Begin(), endMPi = vpMPsi.End(); iMP != endMPi;
            ++iMP) {
-        MapPoint* pMPi = iMP->second.mapPoint;
+        MapPointPtr pMPi = iMP->second.mapPoint;
         if (!pMPi) continue;
         if (pMPi->isBad()) continue;
         if (pMPi->mnCorrectedByKF == mpCurrentKF->id()) continue;
@@ -411,10 +424,6 @@ void LoopClosing::CorrectLoop() {
     }
   }
 
-  // Add loop edge
-  mpMatchedKF->AddLoopEdge(mpCurrentKF);
-  mpCurrentKF->AddLoopEdge(mpMatchedKF);
-
   RunGlobalBundleAdjustment(mpCurrentKF->id());
 
   // Loop closed. Release Local Mapping.
@@ -422,6 +431,10 @@ void LoopClosing::CorrectLoop() {
 
   mLastLoopKFid = mpCurrentKF->id();
 }
+
+#ifdef _MSC_VER
+#pragma optimize("", on)
+#endif
 
 void LoopClosing::Reset() {
   mlpLoopKeyFrameQueue.clear();
@@ -446,16 +459,16 @@ void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF) {
   std::cout << "Updating map ..." << std::endl;
 
   // Correct keyframes starting at map first keyframe
-  std::list<KeyFrame*> lpKFtoCheck(mpMap->mvpKeyFrameOrigins.begin(),
-                                   mpMap->mvpKeyFrameOrigins.end());
+  std::list<KeyFramePtr> lpKFtoCheck(mpMap->mvpKeyFrameOrigins.begin(),
+                                     mpMap->mvpKeyFrameOrigins.end());
 
   while (!lpKFtoCheck.empty()) {
-    KeyFrame* pKF = lpKFtoCheck.front();
-    const std::set<KeyFrame*> sChilds = pKF->GetChilds();
+    KeyFramePtr pKF = lpKFtoCheck.front();
+    const std::set<KeyFramePtr> sChilds = pKF->GetChilds();
     cv::Mat Twc = pKF->GetPoseInverse();
-    for (std::set<KeyFrame*>::const_iterator sit = sChilds.begin();
+    for (std::set<KeyFramePtr>::const_iterator sit = sChilds.begin();
          sit != sChilds.end(); sit++) {
-      KeyFrame* pChild = *sit;
+      KeyFramePtr pChild = *sit;
       if (pChild->mnBAGlobalForKF != nLoopKF) {
         cv::Mat Tchildc = pChild->GetPose() * Twc;
         pChild->mTcwGBA = Tchildc * pKF->mTcwGBA;  //*Tcorc*pKF->mTcwGBA;
@@ -470,10 +483,10 @@ void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF) {
   }
 
   // Correct MapPoints
-  const std::vector<MapPoint*> vpMPs = mpMap->GetAllMapPoints();
+  const std::vector<MapPointPtr> vpMPs = mpMap->GetAllMapPoints();
 
   for (size_t i = 0; i < vpMPs.size(); i++) {
-    MapPoint* pMP = vpMPs[i];
+    MapPointPtr pMP = vpMPs[i];
 
     if (pMP->isBad()) continue;
 
@@ -482,7 +495,7 @@ void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF) {
       pMP->SetWorldPos(pMP->mPosGBA);
     } else {
       // Update according to the correction of its reference keyframe
-      KeyFrame* pRefKF = pMP->GetReferenceKeyFrame();
+      KeyFramePtr pRefKF = pMP->GetReferenceKeyFrame();
 
       if (pRefKF->mnBAGlobalForKF != nLoopKF) continue;
 

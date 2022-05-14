@@ -12,7 +12,7 @@ class FeatureMatcher : public SLAM_PIPELINE::FeatureMatcher {
   ~FeatureMatcher() override;
 
   SLAM_PIPELINE::MatchFramesResult MatchFrames(
-      SLAM_PIPELINE::FrameBase* pF1, SLAM_PIPELINE::FrameBase* pF2) override;
+      SLAM_PIPELINE::FrameBase& pF1, SLAM_PIPELINE::FrameBase& pF2) override;
 
   void SetThreshold(float value);
 

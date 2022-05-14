@@ -26,10 +26,13 @@
 
 #include "Converter.h"
 #include "LoopClosing.h"
+#include "Tracking.h"
+#include "MapDrawer.h"
+
 
 namespace SLAM_PIPELINE {
 
-System::System(FeatureParameters &parameters, FeatureMatcher *featureMatcher,
+System::System(SlamParameters &parameters, FeatureMatcher *featureMatcher,
                KeyFrameDatabase *keyFrameDatabase, FrameFactory *frameFactory,
                KeyFrameFactory *keyFrameFactory)
     : mFeatureMatcher(featureMatcher), mpKeyFrameDatabase(keyFrameDatabase) {
@@ -86,7 +89,7 @@ void System::SaveKeyFrameTrajectoryTUM(const std::string &filename) {
             << "Saving keyframe trajectory to " << filename << " ..."
             << std::endl;
 
-  std::vector<KeyFrame *> vpKFs = mpMap->GetAllKeyFrames();
+  std::vector<KeyFramePtr> vpKFs = mpMap->GetAllKeyFrames();
   sort(vpKFs.begin(), vpKFs.end(), KeyFrame::lId);
 
   // Transform all keyframes so that the first keyframe is at the origin.
@@ -98,7 +101,7 @@ void System::SaveKeyFrameTrajectoryTUM(const std::string &filename) {
   f << std::fixed;
 
   for (size_t i = 0; i < vpKFs.size(); i++) {
-    KeyFrame *pKF = vpKFs[i];
+    KeyFramePtr pKF = vpKFs[i];
 
     // pKF->SetPose(pKF->GetPose()*Two);
 
@@ -125,7 +128,7 @@ void System::SetMinimumKeyFrames(int min_num_kf) {
 
 cv::Mat System::GetCurrentPosition() { return current_position_; }
 
-std::vector<MapPoint *> System::GetAllMapPoints() {
+std::vector<MapPointPtr> System::GetAllMapPoints() {
   return mpMap->GetAllMapPoints();
 }
 

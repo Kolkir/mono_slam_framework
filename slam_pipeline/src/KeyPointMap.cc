@@ -28,11 +28,12 @@ void KeyPointMap::Clear() {
   mMapPoints.clear();
 }
 
-void KeyPointMap::SetMapPoint(int index, MapPoint* mapPoint) {
+void KeyPointMap::SetMapPoint(int index, MapPointPtr mapPoint) {
   SetMapPoint(KeyPointFromIndex(index), mapPoint);
 }
 
-void KeyPointMap::SetMapPoint(const cv::Point2i& keyPoint, MapPoint* mapPoint) {
+void KeyPointMap::SetMapPoint(const cv::Point2i& keyPoint,
+                              MapPointPtr mapPoint) {
   if (keyPoint.x >= 0 && keyPoint.x < mCols && keyPoint.y >= 0 &&
       keyPoint.y < mRows) {
     auto index = keyPoint.y * mCols + keyPoint.x;
@@ -50,7 +51,8 @@ void KeyPointMap::SetMapPoint(const cv::Point2i& keyPoint, MapPoint* mapPoint) {
   }
 }
 
-MapPoint* KeyPointMap::GetMapPoint(const cv::Point2i& keyPoint, int diameter) {
+MapPointPtr KeyPointMap::GetMapPoint(const cv::Point2i& keyPoint,
+                                     int diameter) {
   auto item = GetMapItem(keyPoint, diameter);
   if (item) {
     return item->mapPoint;

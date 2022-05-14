@@ -5,12 +5,12 @@
 #include <unordered_map>
 
 #include "slam_pipeline_export.h"
+#include "types.h"
 
 namespace SLAM_PIPELINE {
-class MapPoint;
 
 struct SLAM_PIPELINE_EXPORT MapPointItem {
-  MapPoint* mapPoint{nullptr};
+  MapPointPtr mapPoint{nullptr};
   bool outlier{false};
 };
 
@@ -25,14 +25,14 @@ class SLAM_PIPELINE_EXPORT KeyPointMap {
   KeyPointMap& operator=(const KeyPointMap& keyPointMap);
 
   // If mapPoint is nullptr it will erase the existing one
-  void SetMapPoint(const cv::Point2i& keyPoint, MapPoint* mapPoint);
-  void SetMapPoint(int index, MapPoint* mapPoint);
+  void SetMapPoint(const cv::Point2i& keyPoint, MapPointPtr mapPoint);
+  void SetMapPoint(int index, MapPointPtr mapPoint);
   void SetOutlier(const cv::Point2i& keyPoint, bool isOutlier);
   void SetOutlier(int index, bool isOutlier);
   bool IsOutlier(const cv::Point2i& keyPoint);
   bool IsOutlier(int index);
 
-  MapPoint* GetMapPoint(const cv::Point2i& keyPoint, int diameter = 5);
+  MapPointPtr GetMapPoint(const cv::Point2i& keyPoint, int diameter = 5);
 
   cv::Point2i KeyPointFromIndex(int index) const;
 

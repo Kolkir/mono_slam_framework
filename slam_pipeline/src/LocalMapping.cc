@@ -24,11 +24,12 @@
 #include "KeyPointMap.h"
 #include "LoopClosing.h"
 #include "Optimizer.h"
+#include "MapPoint.h"
 
 namespace SLAM_PIPELINE {
 
 LocalMapping::LocalMapping(Map *pMap, FeatureMatcher *featureMatcher,
-                           const FeatureParameters &parameters)
+                           const SlamParameters &parameters)
     : mpMap(pMap), mFeatureMatcher(featureMatcher) {
   mMinParallax = parameters.minimumParallax;
 }
@@ -66,7 +67,7 @@ void LocalMapping::Run() {
   }
 }
 
-void LocalMapping::InsertKeyFrame(KeyFrame *pKF) {
+void LocalMapping::InsertKeyFrame(KeyFramePtr pKF) {
   mlNewKeyFrames.push_back(pKF);
 }
 
@@ -81,7 +82,7 @@ void LocalMapping::ProcessNewKeyFrame() {
   auto start = vpMapPointMatches.Begin();
   auto end = vpMapPointMatches.End();
   for (auto i = start; i != end; ++i) {
-    MapPoint *pMP = i->second.mapPoint;
+    MapPointPtr pMP = i->second.mapPoint;
     if (pMP) {
       if (!pMP->isBad()) {
         if (!pMP->IsInKeyFrame(mpCurrentKeyFrame)) {
@@ -106,14 +107,14 @@ void LocalMapping::ProcessNewKeyFrame() {
 
 void LocalMapping::MapPointCulling() {
   // Check Recent Added MapPoints
-  std::list<MapPoint *>::iterator lit = mlpRecentAddedMapPoints.begin();
-  const unsigned long int nCurrentKFid = mpCurrentKeyFrame->id();
+  auto lit = mlpRecentAddedMapPoints.begin();
+  const auto nCurrentKFid = mpCurrentKeyFrame->id();
 
   int nThObs = 2;
   const int cnThObs = nThObs;
 
   while (lit != mlpRecentAddedMapPoints.end()) {
-    MapPoint *pMP = *lit;
+    MapPointPtr pMP = *lit;
     if (pMP->isBad()) {
       lit = mlpRecentAddedMapPoints.erase(lit);
     } else if (pMP->GetFoundRatio() < 0.25f) {
@@ -133,7 +134,7 @@ void LocalMapping::MapPointCulling() {
 void LocalMapping::CreateNewMapPoints() {
   // Retrieve neighbor keyframes in covisibility graph
   int nn = 20;
-  const std::vector<KeyFrame *> vpNeighKFs =
+  const std::vector<KeyFramePtr> vpNeighKFs =
       mpCurrentKeyFrame->GetBestCovisibilityKeyFrames(nn);
 
   cv::Mat Rcw1 = mpCurrentKeyFrame->GetRotation();
@@ -158,7 +159,7 @@ void LocalMapping::CreateNewMapPoints() {
   for (size_t i = 0; i < vpNeighKFs.size(); i++) {
     if (i > 0 && CheckNewKeyFrames()) return;
 
-    KeyFrame *pKF2 = vpNeighKFs[i];
+    KeyFramePtr pKF2 = vpNeighKFs[i];
 
     // Check first that baseline is not too short
     cv::Mat Ow2 = pKF2->GetCameraCenter();
@@ -170,7 +171,7 @@ void LocalMapping::CreateNewMapPoints() {
 
     if (ratioBaselineDepth < 0.01) continue;
 
-    auto matchResult = mFeatureMatcher->MatchFrames(mpCurrentKeyFrame, pKF2);
+    auto matchResult = mFeatureMatcher->MatchFrames(*mpCurrentKeyFrame, *pKF2);
 
     cv::Mat Rcw2 = pKF2->GetRotation();
     cv::Mat Rwc2 = Rcw2.t();
@@ -261,7 +262,7 @@ void LocalMapping::CreateNewMapPoints() {
       if ((errX2 * errX2 + errY2 * errY2) > 5.991) continue;
 
       // Triangulation is succesfull
-      MapPoint *pMP = new MapPoint(x3D, mpCurrentKeyFrame, mpMap);
+      auto pMP = std::make_shared<MapPoint>(x3D, mpCurrentKeyFrame, mpMap);
 
       pMP->AddObservation(mpCurrentKeyFrame, matchResult.keyPoints1[ikp]);
       pMP->AddObservation(pKF2, matchResult.keyPoints2[ikp]);
@@ -293,26 +294,23 @@ void LocalMapping::CreateNewMapPoints() {
 void LocalMapping::SearchInNeighbors() {
   // Retrieve neighbor keyframes
   int nn = 20;
-  const std::vector<KeyFrame *> vpNeighKFs =
+  const std::vector<KeyFramePtr> vpNeighKFs =
       mpCurrentKeyFrame->GetBestCovisibilityKeyFrames(nn);
-  std::vector<KeyFrame *> vpTargetKFs;
-  for (std::vector<KeyFrame *>::const_iterator vit = vpNeighKFs.begin(),
-                                               vend = vpNeighKFs.end();
-       vit != vend; vit++) {
-    KeyFrame *pKFi = *vit;
+  std::vector<KeyFramePtr> vpTargetKFs;
+  for (auto vit = vpNeighKFs.begin(), vend = vpNeighKFs.end(); vit != vend;
+       vit++) {
+    KeyFramePtr pKFi = *vit;
     if (pKFi->isBad() || pKFi->mnFuseTargetForKF == mpCurrentKeyFrame->id())
       continue;
     vpTargetKFs.push_back(pKFi);
     pKFi->mnFuseTargetForKF = mpCurrentKeyFrame->id();
 
     // Extend to some second neighbors
-    const std::vector<KeyFrame *> vpSecondNeighKFs =
+    const std::vector<KeyFramePtr> vpSecondNeighKFs =
         pKFi->GetBestCovisibilityKeyFrames(5);
-    for (std::vector<KeyFrame *>::const_iterator
-             vit2 = vpSecondNeighKFs.begin(),
-             vend2 = vpSecondNeighKFs.end();
+    for (auto vit2 = vpSecondNeighKFs.begin(), vend2 = vpSecondNeighKFs.end();
          vit2 != vend2; vit2++) {
-      KeyFrame *pKFi2 = *vit2;
+      KeyFramePtr pKFi2 = *vit2;
       if (pKFi2->isBad() ||
           pKFi2->mnFuseTargetForKF == mpCurrentKeyFrame->id() ||
           pKFi2->id() == mpCurrentKeyFrame->id())
@@ -322,16 +320,15 @@ void LocalMapping::SearchInNeighbors() {
   }
 
   // Fuse matches from current KF in target KFs
-  for (std::vector<KeyFrame *>::iterator vit = vpTargetKFs.begin(),
-                                         vend = vpTargetKFs.end();
-       vit != vend; vit++) {
-    KeyFrame *pKFi = *vit;
+  for (auto vit = vpTargetKFs.begin(), vend = vpTargetKFs.end(); vit != vend;
+       vit++) {
+    KeyFramePtr pKFi = *vit;
 
-    auto matchResult = mFeatureMatcher->MatchFrames(mpCurrentKeyFrame, pKFi);
+    auto matchResult = mFeatureMatcher->MatchFrames(*mpCurrentKeyFrame, *pKFi);
     auto nmatches = matchResult.GetNumMatches();
     for (int i = 0; i < nmatches; ++i) {
-      MapPoint *pMP1 = matchResult.GetMapPoint1(i);
-      MapPoint *pMP2 = matchResult.GetMapPoint2(i);
+      MapPointPtr pMP1 = matchResult.GetMapPoint1(i);
+      MapPointPtr pMP2 = matchResult.GetMapPoint2(i);
       if (pMP1 && pMP2) {
         if (!pMP1->isBad() && !pMP2->isBad()) {
           if (pMP2->Observations() > pMP1->Observations())
@@ -363,12 +360,7 @@ void LocalMapping::SearchInNeighbors() {
 }
 
 void LocalMapping::Release() {
-  for (std::list<KeyFrame *>::iterator lit = mlNewKeyFrames.begin(),
-                                       lend = mlNewKeyFrames.end();
-       lit != lend; lit++)
-    delete *lit;
   mlNewKeyFrames.clear();
-
   std::cout << "Local Mapping RELEASE" << std::endl;
 }
 
@@ -377,13 +369,12 @@ void LocalMapping::KeyFrameCulling() {
   // A keyframe is considered redundant if the 90% of the MapPoints it sees, are
   // seen in at least other 3 keyframes (in the same or finer scale) We only
   // consider close stereo points
-  std::vector<KeyFrame *> vpLocalKeyFrames =
+  std::vector<KeyFramePtr> vpLocalKeyFrames =
       mpCurrentKeyFrame->GetVectorCovisibleKeyFrames();
   int nbadframes = 0;
-  for (std::vector<KeyFrame *>::iterator vit = vpLocalKeyFrames.begin(),
-                                         vend = vpLocalKeyFrames.end();
+  for (auto vit = vpLocalKeyFrames.begin(), vend = vpLocalKeyFrames.end();
        vit != vend; vit++) {
-    KeyFrame *pKF = *vit;
+    KeyFramePtr pKF = *vit;
     if (pKF->id() == 0) continue;
     auto vpMapPoints = pKF->GetMapPointMatches();
 
@@ -392,7 +383,7 @@ void LocalMapping::KeyFrameCulling() {
     int nMPs = 0;
     for (auto i = vpMapPoints.Begin(), iend = vpMapPoints.End(); i != iend;
          ++i) {
-      MapPoint *pMP = i->second.mapPoint;
+      MapPointPtr pMP = i->second.mapPoint;
       if (pMP) {
         if (!pMP->isBad()) {
           nMPs++;
@@ -401,7 +392,7 @@ void LocalMapping::KeyFrameCulling() {
             int nObs = 0;
             for (auto mit = observations.begin(), mend = observations.end();
                  mit != mend; mit++) {
-              KeyFrame *pKFi = mit->first;
+              KeyFramePtr pKFi = mit->first;
               if (pKFi == pKF) {
                 continue;
               }

@@ -43,6 +43,7 @@ ${G2O_INCLUDE_DIR}
 )
 
 set(INCLUDES 
+include/types.h
 include/System.h
 include/Tracking.h
 include/LocalMapping.h
@@ -61,6 +62,7 @@ include/Frame.h
 include/KeyFrameDatabase.h
 include/Sim3Solver.h
 include/Initializer.h
+include/SlamParameters.h
 )
 
 

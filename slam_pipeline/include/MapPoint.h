@@ -21,44 +21,44 @@
 #ifndef MAPPOINT_H
 #define MAPPOINT_H
 
+#include <map>
 #include <opencv2/core/core.hpp>
 
-#include "Frame.h"
-#include "KeyFrame.h"
-#include "Map.h"
 #include "slam_pipeline_export.h"
+#include "types.h"
 
 namespace SLAM_PIPELINE {
 
-class KeyFrame;
 class Map;
-class Frame;
 
 class SLAM_PIPELINE_EXPORT MapPoint {
  public:
-  MapPoint(const cv::Mat& Pos, KeyFrame* pRefKF, Map* pMap);
-  MapPoint(const cv::Mat& Pos, Map* pMap, Frame* pFrame);
+  typedef std::map<KeyFramePtr, cv::Point2i, std::less<>> ObservationsMap;
+
+  MapPoint(const cv::Mat& Pos, KeyFramePtr pRefKF, Map* pMap);
+  MapPoint(const cv::Mat& Pos, Map* pMap, const Frame& frame);
 
   void SetWorldPos(const cv::Mat& Pos);
-  cv::Mat GetWorldPos();
+  cv::Mat GetWorldPos() const;
 
-  cv::Mat GetNormal();
-  KeyFrame* GetReferenceKeyFrame();
+  cv::Mat GetNormal() const;
+  KeyFramePtr GetReferenceKeyFrame();
 
-  const std::map<KeyFrame*, cv::Point2i>& GetObservations();
+  const ObservationsMap& GetObservations();
   int Observations();
 
-  void AddObservation(KeyFrame* pKF, const cv::Point2i& key);
-  void EraseObservation(KeyFrame* pKF);
+  void AddObservation(KeyFramePtr pKF, const cv::Point2i& key);
+  void EraseObservation(KeyFramePtr pKF);
 
-  bool GetKeyPointInKeyFrame(KeyFrame* pKF, cv::Point2i& key);
-  bool IsInKeyFrame(KeyFrame* pKF);
+  bool GetKeyPointInKeyFrame(const KeyFrame* pKF, cv::Point2i& key) const;
+  bool IsInKeyFrame(const KeyFrame* pKF) const;
+  bool IsInKeyFrame(KeyFramePtr pKF) const;
 
   void SetBadFlag();
   bool isBad();
 
-  void Replace(MapPoint* pMP);
-  MapPoint* GetReplaced();
+  void Replace(MapPointPtr pMP);
+  std::shared_ptr<MapPoint> GetReplaced();
 
   void IncreaseVisible(int n = 1);
   void IncreaseFound(int n = 1);
@@ -67,7 +67,7 @@ class SLAM_PIPELINE_EXPORT MapPoint {
 
   void UpdateNormalAndDepth();
 
-  float GetDistanceInvariance();
+  float GetDistanceInvariance() const;
 
  public:
   long unsigned int mnId;
@@ -96,13 +96,13 @@ class SLAM_PIPELINE_EXPORT MapPoint {
   cv::Mat mWorldPos;
 
   // Keyframes observing the point and associated index in keyframe
-  std::map<KeyFrame*, cv::Point2i> mObservations;
+  ObservationsMap mObservations;
 
   // Mean viewing direction
   cv::Mat mNormalVector;
 
   // Reference KeyFrame
-  KeyFrame* mpRefKF;
+  KeyFramePtr mpRefKF;
 
   // Tracking counters
   int mnVisible;
@@ -110,7 +110,7 @@ class SLAM_PIPELINE_EXPORT MapPoint {
 
   // Bad flag (we do not currently erase MapPoint from memory)
   bool mbBad;
-  MapPoint* mpReplaced;
+  std::shared_ptr<MapPoint> mpReplaced;
 
   // invariance distance
   float mfDistance;

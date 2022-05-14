@@ -42,9 +42,9 @@ DNNFeatureMatcher::DNNFeatureMatcher(const std::wstring& model_file_path,
 DNNFeatureMatcher::~DNNFeatureMatcher() {}
 
 SLAM_PIPELINE::MatchFramesResult DNNFeatureMatcher::MatchFrames(
-    SLAM_PIPELINE::FrameBase* pF1, SLAM_PIPELINE::FrameBase* pF2) {
-  auto first_input_image = ConvertImageToFloat(pF1->imGray);
-  auto second_input_image = ConvertImageToFloat(pF2->imGray);
+    SLAM_PIPELINE::FrameBase& pF1, SLAM_PIPELINE::FrameBase& pF2) {
+  auto first_input_image = ConvertImageToFloat(pF1.imGray);
+  auto second_input_image = ConvertImageToFloat(pF2.imGray);
   size_t input_size = first_input_image.total() * first_input_image.elemSize();
 
   std::vector<Ort::Value> input;
@@ -80,9 +80,9 @@ SLAM_PIPELINE::MatchFramesResult DNNFeatureMatcher::MatchFrames(
   cv::findNonZero(confidence_map, feature_coordinates);
 
   SLAM_PIPELINE::MatchFramesResult matchResult;
-  matchResult.pF1 = pF1;
+  matchResult.pF1 = &pF1;
   matchResult.keyPoints1.reserve(100);
-  matchResult.pF2 = pF2;
+  matchResult.pF2 = &pF2;
   matchResult.keyPoints2.reserve(100);
 
   for (size_t k = 0; k < feature_coordinates.total(); k++) {

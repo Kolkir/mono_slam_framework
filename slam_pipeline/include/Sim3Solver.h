@@ -22,21 +22,21 @@
 #define SIM3SOLVER_H
 
 #include <opencv2/core/core_c.h>
-#include "slam_pipeline_export.h"
 
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-#include "FeatureMatcher.h"
-#include "Frame.h"
-#include "KeyFrame.h"
+#include "slam_pipeline_export.h"
+#include "types.h"
 
 namespace SLAM_PIPELINE {
 
+struct MatchFramesResult;
+
 class SLAM_PIPELINE_EXPORT Sim3Solver {
  public:
-  Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2,
-             const MatchFramesResult &matchResult, const bool bFixScale = true);
+  Sim3Solver(const MatchFramesResult &matchResult,
+             double minSim3ReprojectionError);
 
   void SetRansacParameters(double probability = 0.99, int minInliers = 6,
                            int maxIterations = 300);
@@ -64,19 +64,11 @@ class SLAM_PIPELINE_EXPORT Sim3Solver {
 
  protected:
   // KeyFrames and matches
-
   std::vector<cv::Mat> mvX3Dc1;
   std::vector<cv::Mat> mvX3Dc2;
-  std::vector<MapPoint *> mvpMapPoints1;
-  std::vector<MapPoint *> mvpMapPoints2;
-  std::vector<size_t> mvnIndices1;
-  std::vector<size_t> mvSigmaSquare1;
-  std::vector<size_t> mvSigmaSquare2;
-  std::vector<float> mvnMaxError1;
-  std::vector<float> mvnMaxError2;
 
-  int N;
-  int mN1;
+  int mNumMapPointMatches;
+  int mNumKeyPointMatches;
 
   // Current Estimation
   cv::Mat mR12i;
@@ -96,9 +88,6 @@ class SLAM_PIPELINE_EXPORT Sim3Solver {
   cv::Mat mBestTranslation;
   float mBestScale;
 
-  // Scale is fixed to 1 in the stereo/RGBD case
-  bool mbFixScale;
-
   // Indices for random selection
   std::vector<size_t> mvAllIndices;
 
@@ -109,15 +98,13 @@ class SLAM_PIPELINE_EXPORT Sim3Solver {
   // RANSAC probability
   double mRansacProb;
 
+  double mMinSim3ReprojectionError;
+
   // RANSAC min inliers
   int mRansacMinInliers;
 
   // RANSAC max iterations
   int mRansacMaxIts;
-
-  // Threshold inlier/outlier. e = dist(Pi,T_ij*Pj)^2 < 5.991*mSigma2
-  float mTh;
-  float mSigma2;
 
   // Calibration
   cv::Mat mK1;

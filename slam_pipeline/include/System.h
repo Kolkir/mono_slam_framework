@@ -21,29 +21,34 @@
 #ifndef SYSTEM_H
 #define SYSTEM_H
 
+#include <memory>
 #include <opencv2/core/core.hpp>
 #include <string>
-#include <memory>
 
-#include "KeyFrameDatabase.h"
-#include "LocalMapping.h"
-#include "Map.h"
-#include "MapDrawer.h"
-#include "Tracking.h"
+#include "SlamParameters.h"
 #include "slam_pipeline_export.h"
+#include "types.h"
 
 namespace SLAM_PIPELINE {
 class LoopClosing;
+class LocalMapping;
+class MapDrawer;
+class FrameFactory;
+class KeyFrameFactory;
+class Map;
+class KeyFrameDatabase;
+class FeatureMatcher;
+class Tracking;
 
 class SLAM_PIPELINE_EXPORT System {
  public:
-  System(FeatureParameters &parameters, FeatureMatcher *featureMatcher,
+  System(SlamParameters &parameters, FeatureMatcher *featureMatcher,
          KeyFrameDatabase *keyFrameDatabase, FrameFactory *frameFactory,
          KeyFrameFactory *keyFrameFactory);
 
   // Process the given monocular frame
-  // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to
-  // grayscale. Returns the camera pose (empty if tracking fails).
+  // Input images: grayscale (CV_8U).  Returns the camera pose (empty if
+  // tracking fails).
   void TrackMonocular(const cv::Mat &im, const double &timestamp);
 
   // Returns true if there have been a big map change (loop closure, global BA)
@@ -66,7 +71,7 @@ class SLAM_PIPELINE_EXPORT System {
 
   cv::Mat GetCurrentPosition();
 
-  std::vector<MapPoint *> GetAllMapPoints();
+  std::vector<MapPointPtr> GetAllMapPoints();
 
   cv::Mat GetCurrentMatchImage() const;
 
@@ -79,23 +84,23 @@ class SLAM_PIPELINE_EXPORT System {
   KeyFrameDatabase *mpKeyFrameDatabase;
 
   // Map structure that stores the pointers to all KeyFrames and MapPoints.
-  std::unique_ptr<Map> mpMap;
+  std::shared_ptr<Map> mpMap;
 
   // Tracker. It receives a frame and computes the associated camera pose.
   // It also decides when to insert a new keyframe, create some new MapPoints
   // and performs relocalization if tracking fails.
-  std::unique_ptr<Tracking> mpTracker;
+  std::shared_ptr<Tracking> mpTracker;
 
   // Local Mapper. It manages the local map and performs local bundle
   // adjustment.
-  std::unique_ptr<LocalMapping> mpLocalMapper;
+  std::shared_ptr<LocalMapping> mpLocalMapper;
 
   // Loop Closer. It searches loops with every new keyframe. If there is a loop
   // it performs a pose graph optimization and full bundle adjustment (in a new
   // thread) afterwards.
   std::shared_ptr<LoopClosing> mpLoopCloser;
 
-  std::unique_ptr<MapDrawer> mpMapDrawer;
+  std::shared_ptr<MapDrawer> mpMapDrawer;
 
   // Current position
   cv::Mat current_position_;

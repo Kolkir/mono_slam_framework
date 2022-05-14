@@ -20,40 +20,36 @@
 
 #include "Map.h"
 
+#include "KeyFrame.h"
+#include "MapPoint.h"
+
 namespace SLAM_PIPELINE {
 
 Map::Map() : mnMaxKFid(0), mnBigChangeIdx(0) {}
 
-void Map::AddKeyFrame(KeyFrame *pKF) {
+void Map::AddKeyFrame(KeyFramePtr pKF) {
   mspKeyFrames.insert(pKF);
   if (pKF->id() > mnMaxKFid) mnMaxKFid = pKF->id();
 }
 
-void Map::AddMapPoint(MapPoint *pMP) {
-  mspMapPoints.insert(pMP);
+void Map::AddMapPoint(MapPointPtr pMP) { mspMapPoints.insert(pMP); }
+
+void Map::EraseMapPoint(MapPointPtr pMP) { mspMapPoints.erase(pMP); }
+
+void Map::EraseMapPoint(MapPoint* pMP) {
+  for (auto mp : mspMapPoints) {
+    if (mp.get() == pMP) {
+      mspMapPoints.erase(mp);
+      return;
+    }
+  }
 }
 
-void Map::EraseMapPoint(MapPoint *pMP) {
-  mspMapPoints.erase(pMP);
+void Map::EraseKeyFrame(KeyFramePtr pKF) { mspKeyFrames.erase(pKF); }
 
-  // TODO: This only erase the pointer.
-  // Delete the MapPoint
-}
+void Map::InformNewBigChange() { mnBigChangeIdx++; }
 
-void Map::EraseKeyFrame(KeyFrame *pKF) {
-  mspKeyFrames.erase(pKF);
-
-  // TODO: This only erase the pointer.
-  // Delete the MapPoint
-}
-
-void Map::InformNewBigChange() {
-  mnBigChangeIdx++;
-}
-
-int Map::GetLastBigChangeIdx() {
-  return mnBigChangeIdx;
-}
+int Map::GetLastBigChangeIdx() { return mnBigChangeIdx; }
 
 std::pair<size_t, size_t> Map::GoodBadMapPointsInMap() {
   size_t nbad = 0;
@@ -67,37 +63,21 @@ std::pair<size_t, size_t> Map::GoodBadMapPointsInMap() {
   return {ngood, nbad};
 }
 
-std::vector<KeyFrame *> Map::GetAllKeyFrames() {
-  return std::vector<KeyFrame *>(mspKeyFrames.begin(), mspKeyFrames.end());
+std::vector<KeyFramePtr> Map::GetAllKeyFrames() {
+  return std::vector<KeyFramePtr>(mspKeyFrames.begin(), mspKeyFrames.end());
 }
 
-std::vector<MapPoint *> Map::GetAllMapPoints() {
-  return std::vector<MapPoint *>(mspMapPoints.begin(), mspMapPoints.end());
+std::vector<MapPointPtr> Map::GetAllMapPoints() {
+  return std::vector<MapPointPtr>(mspMapPoints.begin(), mspMapPoints.end());
 }
 
-size_t Map::MapPointsInMap() {
-  return mspMapPoints.size();
-}
+size_t Map::MapPointsInMap() { return mspMapPoints.size(); }
 
-size_t Map::KeyFramesInMap() {
-  return mspKeyFrames.size();
-}
+size_t Map::KeyFramesInMap() { return mspKeyFrames.size(); }
 
-long unsigned int Map::GetMaxKFid() {
-  return mnMaxKFid;
-}
+long unsigned int Map::GetMaxKFid() { return mnMaxKFid; }
 
 void Map::clear() {
-  for (std::set<MapPoint *>::iterator sit = mspMapPoints.begin(),
-                                      send = mspMapPoints.end();
-       sit != send; sit++)
-    delete *sit;
-
-  for (std::set<KeyFrame *>::iterator sit = mspKeyFrames.begin(),
-                                      send = mspKeyFrames.end();
-       sit != send; sit++)
-    delete *sit;
-
   mspMapPoints.clear();
   mspKeyFrames.clear();
   mnMaxKFid = 0;

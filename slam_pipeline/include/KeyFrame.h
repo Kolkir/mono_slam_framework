@@ -21,22 +21,21 @@
 #ifndef KEYFRAME_H
 #define KEYFRAME_H
 
-#include "Frame.h"
+#include <memory>
+
 #include "FrameBase.h"
-#include "KeyFrameDatabase.h"
 #include "KeyPointMap.h"
-#include "MapPoint.h"
 #include "slam_pipeline_export.h"
+#include "types.h"
 
 namespace SLAM_PIPELINE {
 
-class Map;
-class MapPoint;
-class Frame;
 class KeyFrameDatabase;
-class KeyFrameFactory;
+class Map;
 
-class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
+class SLAM_PIPELINE_EXPORT KeyFrame
+    : public FrameBase,
+      public std::enable_shared_from_this<KeyFrame> {
  protected:
   friend class KeyFrameFactory;
   KeyFrame(Frame& F, Map* pMap, KeyFrameDatabase* pKFDB);
@@ -47,37 +46,33 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
   long unsigned int id() const override;
 
   // Covisibility graph functions
-  void AddConnection(KeyFrame* pKF, const int& weight);
-  void EraseConnection(KeyFrame* pKF);
+  void AddConnection(KeyFramePtr pKF, const int& weight);
+  void EraseConnection(KeyFramePtr pKF);
   void UpdateConnections();
   void UpdateBestCovisibles();
-  std::set<KeyFrame*> GetConnectedKeyFrames();
-  std::vector<KeyFrame*> GetVectorCovisibleKeyFrames();
-  std::vector<KeyFrame*> GetBestCovisibilityKeyFrames(const int& N);
-  std::vector<KeyFrame*> GetCovisiblesByWeight(const int& w);
-  int GetWeight(KeyFrame* pKF);
+  std::set<KeyFramePtr> GetConnectedKeyFrames() const;
+  std::vector<KeyFramePtr> GetVectorCovisibleKeyFrames();
+  std::vector<KeyFramePtr> GetBestCovisibilityKeyFrames(const int& N);
+  std::vector<KeyFramePtr> GetCovisiblesByWeight(const int& w);
+  int GetWeight(KeyFramePtr pKF);
 
   // Spanning tree functions
-  void AddChild(KeyFrame* pKF);
-  void EraseChild(KeyFrame* pKF);
-  void ChangeParent(KeyFrame* pKF);
-  std::set<KeyFrame*> GetChilds();
-  KeyFrame* GetParent();
-  bool hasChild(KeyFrame* pKF);
-
-  // Loop Edges
-  void AddLoopEdge(KeyFrame* pKF);
-  std::set<KeyFrame*> GetLoopEdges();
+  void AddChild(KeyFramePtr pKF);
+  void EraseChild(KeyFramePtr pKF);
+  void ChangeParent(KeyFramePtr pKF);
+  std::set<KeyFramePtr> GetChilds();
+  KeyFramePtr GetParent();
+  bool hasChild(KeyFramePtr pKF);
 
   // MapPoint observation functions
-  void AddMapPoint(MapPoint* pMP, const cv::Point2i& keyPoint);
+  void AddMapPoint(MapPointPtr pMP, const cv::Point2i& keyPoint);
   void EraseMapPointMatch(const cv::Point2i& keyPoint);
-  void EraseMapPointMatch(MapPoint* pMP);
-  void ReplaceMapPointMatch(const cv::Point2i& key, MapPoint* pMP);
-  std::set<MapPoint*> GetMapPoints();
+  void EraseMapPointMatch(MapPointPtr pMP);
+  void ReplaceMapPointMatch(const cv::Point2i& key, MapPointPtr pMP);
+  std::set<MapPointPtr> GetMapPoints();
   KeyPointMap GetMapPointMatches();
   int TrackedMapPoints(const int& minObs);
-  MapPoint* GetMapPoint(const cv::Point2i& keyPoint);
+  MapPointPtr GetMapPoint(const cv::Point2i& keyPoint);
 
   // Image
   bool IsInImage(const float& x, const float& y) const;
@@ -95,7 +90,7 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
 
   static bool weightComp(int a, int b) { return a > b; }
 
-  static bool lId(KeyFrame* pKF1, KeyFrame* pKF2) {
+  static bool lId(KeyFramePtr pKF1, KeyFramePtr pKF2) {
     return pKF1->id() < pKF2->id();
   }
 
@@ -130,15 +125,14 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
  private:
   KeyFrameDatabase* mpKeyFrameDB;
 
-  std::map<KeyFrame*, int> mConnectedKeyFrameWeights;
-  std::vector<KeyFrame*> mvpOrderedConnectedKeyFrames;
+  std::map<KeyFramePtr, int> mConnectedKeyFrameWeights;
+  std::vector<KeyFramePtr> mvpOrderedConnectedKeyFrames;
   std::vector<int> mvOrderedWeights;
 
   // Spanning Tree and Loop Edges
   bool mbFirstConnection;
-  KeyFrame* mpParent;
-  std::set<KeyFrame*> mspChildrens;
-  std::set<KeyFrame*> mspLoopEdges;
+  KeyFramePtr mpParent;
+  std::set<KeyFramePtr> mspChildrens;
 
   // Bad flags
   bool mbNotErase;
@@ -151,10 +145,13 @@ class SLAM_PIPELINE_EXPORT KeyFrame : public FrameBase {
   long unsigned int mnId;
 };
 
+typedef KeyFramePtr KeyFramePtr;
+
 class SLAM_PIPELINE_EXPORT KeyFrameFactory {
  public:
   virtual ~KeyFrameFactory() {}
-  virtual KeyFrame* Create(Frame& F, Map* pMap, KeyFrameDatabase* pKFDB) const;
+  virtual KeyFramePtr Create(Frame& F, Map* pMap,
+                             KeyFrameDatabase* pKFDB) const;
 };
 }  // namespace SLAM_PIPELINE
 

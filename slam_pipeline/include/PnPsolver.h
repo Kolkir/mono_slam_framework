@@ -54,15 +54,15 @@
 #define PNPSOLVER_H
 
 #include <opencv2/core/core_c.h>
-#include "slam_pipeline_export.h"
 
 #include <opencv2/core/core.hpp>
 
-#include "FeatureMatcher.h"
-#include "Frame.h"
-#include "MapPoint.h"
+#include "slam_pipeline_export.h"
+#include "types.h"
 
 namespace SLAM_PIPELINE {
+
+struct MatchFramesResult;
 
 class SLAM_PIPELINE_EXPORT PnPsolver {
  public:
@@ -145,7 +145,7 @@ class SLAM_PIPELINE_EXPORT PnPsolver {
   double cws[4][3], ccs[4][3];
   double cws_determinant;
 
-  std::vector<MapPoint *> mvpMapPointMatches;
+  std::vector<MapPointPtr> mvpMapPointMatches;
 
   // 2D Points
   std::vector<cv::Point2f> mvP2D;

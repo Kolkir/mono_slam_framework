@@ -26,54 +26,26 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/features2d/features2d.hpp>
 
-#include "Frame.h"
+#include "FeatureMatcher.h"
 #include "Initializer.h"
-#include "KeyFrameDatabase.h"
-#include "LocalMapping.h"
-#include "Map.h"
-#include "MapDrawer.h"
+#include "SlamParameters.h"
 #include "slam_pipeline_export.h"
+#include "types.h"
 
 namespace SLAM_PIPELINE {
 
-struct SLAM_PIPELINE_EXPORT FeatureParameters {
-  // camera parameters
-  float fx{0}, fy{0}, cx{0}, cy{0};
-
-  //  Max/Min Frames to insert keyframes and to check relocalization
-  int maxFrames{10};
-  int minFrames{0};
-
-  // Min required feature matches number for initialization
-  int minIniMatchCount{25};
-
-  // Min required feature matches number for local mapping (check lost)
-  int minLocalMatchCount{15};
-
-  // Min required key frames to perform relocalization
-  int minimumKeyFrames{5};
-
-  // Loop closing parameters
-  bool bFixScale{true};
-
-  float nCovisibilityConsistencyTh{3};
-
-  // If the map contains less than num KF or less than num KF have passed from
-  // last loop detection then populate key frame database
-  int loopDetectionMaxFrames{5};
-
-  int minSim3Matches{15};
-  int minTotalSim3Matches{30};
-
-  // The minimum possible parallax value to perform triangulation:
-  // how much map points will be created
-  double minimumParallax = 1.1;
-};
+class MapDrawer;
+class Map;
+class KeyFrameDatabase;
+class FrameFactory;
+class KeyFrameFactory;
+class LocalMapping;
+class LoopClosing;
 
 class SLAM_PIPELINE_EXPORT Tracking {
  public:
   Tracking(MapDrawer* pMapDrawer, Map* pMap, KeyFrameDatabase* pKFDB,
-           const FeatureParameters& parameters, FeatureMatcher* featureMatcher,
+           const SlamParameters& parameters, FeatureMatcher* featureMatcher,
            FrameFactory* frameFactory, KeyFrameFactory* keyFrameFactory);
 
   Tracking(const Tracking&) = delete;
@@ -106,7 +78,7 @@ class SLAM_PIPELINE_EXPORT Tracking {
   eTrackingState mLastProcessedState;
 
   // Current Frame
-  std::unique_ptr<Frame> mCurrentFrame;
+  std::shared_ptr<Frame> mCurrentFrame;
 
   // Min required feature matches number for local maping (check lost)
   int mMinLocalMatchCount{-1};
@@ -116,13 +88,13 @@ class SLAM_PIPELINE_EXPORT Tracking {
   MatchFramesResult mIniMatchResult;
   std::vector<int> mvIniMatches;
   std::vector<cv::Point3f> mvIniP3D;
-  std::unique_ptr<Frame> mInitialFrame;
+  FramePtr mInitialFrame;
 
   // Lists used to recover the full camera trajectory at the end of the
   // execution. Basically we store the reference keyframe for each frame and its
   // relative transformation
   std::list<cv::Mat> mlRelativeFramePoses;
-  std::list<KeyFrame*> mlpReferences;
+  std::list<KeyFramePtr> mlpReferences;
   std::list<double> mlFrameTimes;
   std::list<bool> mlbLost;
 
@@ -165,8 +137,8 @@ class SLAM_PIPELINE_EXPORT Tracking {
   std::unique_ptr<Initializer> mpInitializer;
 
   // Local Map
-  KeyFrame* mpReferenceKF;
-  std::vector<KeyFrame*> mvpLocalKeyFrames;
+  KeyFramePtr mpReferenceKF;
+  std::vector<KeyFramePtr> mvpLocalKeyFrames;
 
   // Drawers
   MapDrawer* mpMapDrawer;
@@ -185,8 +157,8 @@ class SLAM_PIPELINE_EXPORT Tracking {
   int mnMatchesInliers;
 
   // Last Frame, KeyFrame and Relocalisation Info
-  KeyFrame* mpLastKeyFrame;
-  std::unique_ptr<Frame> mLastFrame;
+  KeyFramePtr mpLastKeyFrame;
+  FramePtr mLastFrame;
   unsigned int mnLastKeyFrameId;
   unsigned int mnLastRelocFrameId;
 

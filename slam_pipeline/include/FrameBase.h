@@ -24,12 +24,12 @@ class SLAM_PIPELINE_EXPORT FrameBase {
 
   // Pose functions
   void SetPose(const cv::Mat &Tcw);
-  cv::Mat GetPose();
-  cv::Mat GetPoseInverse();
-  cv::Mat GetCameraCenter();
-  cv::Mat GetRotation();
-  cv::Mat GetRotationInverse();
-  cv::Mat GetTranslation();
+  cv::Mat GetPose() const;
+  cv::Mat GetPoseInverse() const;
+  cv::Mat GetCameraCenter() const;
+  cv::Mat GetRotation() const;
+  cv::Mat GetRotationInverse() const;
+  cv::Mat GetTranslation() const;
 
  public:
   // intrisic camera params

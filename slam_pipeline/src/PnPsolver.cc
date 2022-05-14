@@ -59,6 +59,9 @@
 #include <random>
 #include <vector>
 
+#include "FeatureMatcher.h"
+#include "MapPoint.h"
+
 using namespace std;
 
 namespace SLAM_PIPELINE {
@@ -86,7 +89,7 @@ PnPsolver::PnPsolver(const MatchFramesResult &matchResult)
 
   int idx = 0;
   for (size_t i = 0, iend = mvpMapPointMatches.size(); i < iend; i++) {
-    MapPoint *pMP = mvpMapPointMatches[i];
+    MapPointPtr pMP = mvpMapPointMatches[i];
 
     if (pMP) {
       if (!pMP->isBad()) {

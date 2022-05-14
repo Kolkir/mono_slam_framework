@@ -62,28 +62,16 @@ void FrameBase::SetPose(const cv::Mat &Tcw_) {
   mOw.copyTo(mTwc.rowRange(0, 3).col(3));
 }
 
-cv::Mat FrameBase::GetPose() {
-  return mTcw.clone();
-}
+cv::Mat FrameBase::GetPose() const { return mTcw.clone(); }
 
-cv::Mat FrameBase::GetPoseInverse() {
-  return mTwc.clone();
-}
+cv::Mat FrameBase::GetPoseInverse() const { return mTwc.clone(); }
 
-cv::Mat FrameBase::GetCameraCenter() {
-  return mOw.clone();
-}
+cv::Mat FrameBase::GetCameraCenter() const { return mOw.clone(); }
 
-cv::Mat FrameBase::GetRotation() {
-  return mRcw.clone();
-}
+cv::Mat FrameBase::GetRotation() const { return mRcw.clone(); }
 
-cv::Mat FrameBase::GetTranslation() {
-  return mtcw.clone();
-}
+cv::Mat FrameBase::GetTranslation() const { return mtcw.clone(); }
 
-cv::Mat FrameBase::GetRotationInverse() {
-  return mRwc.clone();
-}
+cv::Mat FrameBase::GetRotationInverse() const { return mRwc.clone(); }
 
 }  // namespace SLAM_PIPELINE

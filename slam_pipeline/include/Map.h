@@ -22,31 +22,29 @@
 #define MAP_H
 
 #include <set>
+#include <vector>
 
-#include "KeyFrame.h"
-#include "MapPoint.h"
 #include "slam_pipeline_export.h"
+#include "types.h"
 
 namespace SLAM_PIPELINE {
-
-class MapPoint;
-class KeyFrame;
 
 class SLAM_PIPELINE_EXPORT Map {
  public:
   Map();
 
-  void AddKeyFrame(KeyFrame* pKF);
-  void AddMapPoint(MapPoint* pMP);
+  void AddKeyFrame(KeyFramePtr pKF);
+  void AddMapPoint(MapPointPtr pMP);
+  void EraseMapPoint(MapPointPtr pMP);
   void EraseMapPoint(MapPoint* pMP);
-  void EraseKeyFrame(KeyFrame* pKF);
+  void EraseKeyFrame(KeyFramePtr pKF);
   void InformNewBigChange();
   int GetLastBigChangeIdx();
 
   std::pair<size_t, size_t> GoodBadMapPointsInMap();
 
-  std::vector<KeyFrame*> GetAllKeyFrames();
-  std::vector<MapPoint*> GetAllMapPoints();
+  std::vector<std::shared_ptr<KeyFrame>> GetAllKeyFrames();
+  std::vector<std::shared_ptr<MapPoint>> GetAllMapPoints();
 
   size_t MapPointsInMap();
   size_t KeyFramesInMap();
@@ -55,11 +53,11 @@ class SLAM_PIPELINE_EXPORT Map {
 
   void clear();
 
-  std::vector<KeyFrame*> mvpKeyFrameOrigins;
+  std::vector<KeyFramePtr> mvpKeyFrameOrigins;
 
  protected:
-  std::set<MapPoint*> mspMapPoints;
-  std::set<KeyFrame*> mspKeyFrames;
+  std::set<MapPointPtr> mspMapPoints;
+  std::set<KeyFramePtr> mspKeyFrames;
 
   long unsigned int mnMaxKFid;
 

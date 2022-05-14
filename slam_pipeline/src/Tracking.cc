@@ -29,15 +29,18 @@
 #include "Initializer.h"
 #include "LoopClosing.h"
 #include "Map.h"
+#include "MapDrawer.h"
+#include "MapPoint.h"
 #include "Optimizer.h"
 #include "PnPsolver.h"
+#include "Sim3Solver.h"
 
 using namespace std;
 
 namespace SLAM_PIPELINE {
 
 Tracking::Tracking(MapDrawer* pMapDrawer, Map* pMap, KeyFrameDatabase* pKFDB,
-                   const FeatureParameters& parameters,
+                   const SlamParameters& parameters,
                    FeatureMatcher* featureMatcher, FrameFactory* frameFactory,
                    KeyFrameFactory* keyFrameFactory)
     : mState(NO_IMAGES_YET),
@@ -89,7 +92,7 @@ void Tracking::SetLoopClosing(LoopClosing* pLoopClosing) {
 
 cv::Mat Tracking::GrabImageMonocular(const cv::Mat& mImGray,
                                      const double& timestamp) {
-  mCurrentFrame.reset(mFrameFactory->Create(mImGray, timestamp, mK));
+  mCurrentFrame = mFrameFactory->Create(mImGray, timestamp, mK);
   Track();
   return mCurrentFrame->mTcw.clone();
 }
@@ -190,7 +193,37 @@ void Tracking::Track() {
     if (!mCurrentFrame->mpReferenceKF)
       mCurrentFrame->mpReferenceKF = mpReferenceKF;
 
-    mLastFrame.reset(mFrameFactory->Clone(mCurrentFrame.get()));
+    // TEST SIM3
+    /*
+    {
+      auto matchResult = mFeatureMatcher->MatchFrames(
+          *mCurrentFrame, *mCurrentFrame->mpReferenceKF);
+      auto nmatches = matchResult.GetNumMatches();
+
+      int minSim3Matches = 15;
+      if (nmatches >= minSim3Matches) {
+        auto pSolver = std::make_unique<Sim3Solver>(matchResult, 9.210);
+        pSolver->SetRansacParameters(0.99, minSim3Matches, 300);
+        int nInliers = 0;
+        bool bNoMore = false;
+        std::vector<bool> vbInliers;
+        auto Scm = pSolver->iterate(5, bNoMore, vbInliers, nInliers);
+        std::cout << "Sim3 Test inliners : " << nInliers << std::endl;
+        if (nInliers > 0) {
+          if (Scm.empty())
+            std::cout << "Sim3 Test failed to found transform" << std::endl;
+        } else {
+          std::cout << "Sim3 Test failed no inliners" << std::endl;
+        }
+      } else {
+        std::cout << "Sim3 Test failed due to lack of feature matches"
+                  << std::endl;
+      }
+    }
+    */
+    // END TEST SIM3
+
+    mLastFrame = FramePtr(mFrameFactory->Clone(*mCurrentFrame));
   }
 
   // Store frame pose information to retrieve the complete camera trajectory
@@ -215,8 +248,8 @@ void Tracking::MonocularInitialization() {
   if (!mpInitializer) {
     // Set Reference Frame
     if (mCurrentFrame) {
-      mInitialFrame.reset(mFrameFactory->Clone(mCurrentFrame.get()));
-      mLastFrame.reset(mFrameFactory->Clone(mCurrentFrame.get()));
+      mInitialFrame = mFrameFactory->Clone(*mCurrentFrame);
+      mLastFrame = mFrameFactory->Clone(*mCurrentFrame);
       mpInitializer = std::make_unique<Initializer>(mCurrentFrame->mK);
       return;
     }
@@ -224,7 +257,7 @@ void Tracking::MonocularInitialization() {
   if (mpInitializer) {
     // Find correspondences
     mIniMatchResult =
-        mFeatureMatcher->MatchFrames(mInitialFrame.get(), mCurrentFrame.get());
+        mFeatureMatcher->MatchFrames(*mInitialFrame, *mCurrentFrame);
 
     CreateCurrentMatchImage(mIniMatchResult);
 
@@ -272,10 +305,8 @@ void Tracking::MonocularInitialization() {
 void Tracking::CreateInitialMapMonocular() {
   mpMap->clear();
   // Create KeyFrames
-  KeyFrame* pKFini =
-      mKeyFrameFactory->Create(*mInitialFrame, mpMap, mpKeyFrameDB);
-  KeyFrame* pKFcur =
-      mKeyFrameFactory->Create(*mCurrentFrame, mpMap, mpKeyFrameDB);
+  auto pKFini = mKeyFrameFactory->Create(*mInitialFrame, mpMap, mpKeyFrameDB);
+  auto pKFcur = mKeyFrameFactory->Create(*mCurrentFrame, mpMap, mpKeyFrameDB);
 
   // Insert KFs in the map
   mpMap->AddKeyFrame(pKFini);
@@ -288,7 +319,7 @@ void Tracking::CreateInitialMapMonocular() {
     // Create MapPoint.
     cv::Mat worldPos(mvIniP3D[i]);
 
-    MapPoint* pMP = new MapPoint(worldPos, pKFcur, mpMap);
+    auto pMP = std::make_shared<MapPoint>(worldPos, pKFcur, mpMap);
 
     pKFini->AddMapPoint(pMP, mIniMatchResult.keyPoints1[i]);
     pKFcur->AddMapPoint(pMP, mIniMatchResult.keyPoints2[i]);
@@ -336,7 +367,7 @@ void Tracking::CreateInitialMapMonocular() {
   auto& vpAllMapPoints = pKFini->mKeyPointMap;
   for (auto iMP = vpAllMapPoints.Begin(), end = vpAllMapPoints.End();
        iMP != end; ++iMP) {
-    MapPoint* pMP = iMP->second.mapPoint;
+    MapPointPtr pMP = iMP->second.mapPoint;
     pMP->SetWorldPos(pMP->GetWorldPos() * invMedianDepth);
   }
 
@@ -352,7 +383,7 @@ void Tracking::CreateInitialMapMonocular() {
   mpReferenceKF = pKFcur;
   mCurrentFrame->mpReferenceKF = pKFcur;
 
-  mLastFrame.reset(mFrameFactory->Clone(mCurrentFrame.get()));
+  mLastFrame = mFrameFactory->Clone(*mCurrentFrame);
 
   mpMap->mvpKeyFrameOrigins.push_back(pKFini);
 
@@ -363,10 +394,10 @@ void Tracking::CheckReplacedInLastFrame() {
   for (auto i = mLastFrame->mKeyPointMap.Begin(),
             end = mLastFrame->mKeyPointMap.End();
        i != end; ++i) {
-    MapPoint* pMP = i->second.mapPoint;
+    MapPointPtr pMP = i->second.mapPoint;
 
     if (pMP) {
-      MapPoint* pRep = pMP->GetReplaced();
+      MapPointPtr pRep = pMP->GetReplaced();
       if (pRep) {
         i->second.mapPoint = pRep;
       }
@@ -377,7 +408,7 @@ void Tracking::CheckReplacedInLastFrame() {
 bool Tracking::TrackReferenceKeyFrame() {
   // We perform first feature matching with the reference keyframe
   auto matchResult =
-      mFeatureMatcher->MatchFrames(mCurrentFrame.get(), mpReferenceKF);
+      mFeatureMatcher->MatchFrames(*mCurrentFrame, *mpReferenceKF);
 
   CreateCurrentMatchImage(matchResult);
 
@@ -396,7 +427,7 @@ bool Tracking::TrackReferenceKeyFrame() {
 
   mCurrentFrame->SetPose(mLastFrame->mTcw);
 
-  Optimizer::PoseOptimization(mCurrentFrame.get());
+  Optimizer::PoseOptimization(mCurrentFrame);
 
   // Discard outliers
   std::vector<int> pointsToRemove;
@@ -405,7 +436,7 @@ bool Tracking::TrackReferenceKeyFrame() {
             end = mCurrentFrame->mKeyPointMap.End();
        i != end; ++i) {
     if (i->second.outlier) {
-      MapPoint* pMP = i->second.mapPoint;
+      MapPointPtr pMP = i->second.mapPoint;
       pointsToRemove.push_back(i->first);
       pMP->mnLastFrameSeen = mCurrentFrame->id();
       nmatches--;
@@ -422,7 +453,7 @@ bool Tracking::TrackReferenceKeyFrame() {
 
 void Tracking::UpdateLastFrame() {
   // Update pose according to reference keyframe
-  KeyFrame* pRef = mLastFrame->mpReferenceKF;
+  KeyFramePtr pRef = mLastFrame->mpReferenceKF;
   cv::Mat Tlr = mlRelativeFramePoses.back();
 
   mLastFrame->SetPose(Tlr * pRef->GetPose());
@@ -438,8 +469,7 @@ bool Tracking::TrackWithMotionModel() {
   mCurrentFrame->mKeyPointMap.Clear();
 
   // Match points seen in previous frame
-  auto matchResult =
-      mFeatureMatcher->MatchFrames(mCurrentFrame.get(), mLastFrame.get());
+  auto matchResult = mFeatureMatcher->MatchFrames(*mCurrentFrame, *mLastFrame);
 
   CreateCurrentMatchImage(matchResult);
 
@@ -458,7 +488,7 @@ bool Tracking::TrackWithMotionModel() {
   }
 
   // Optimize frame pose with all matches
-  Optimizer::PoseOptimization(mCurrentFrame.get());
+  Optimizer::PoseOptimization(mCurrentFrame);
 
   // Discard outliers
   std::vector<int> pointsToRemove;
@@ -467,7 +497,7 @@ bool Tracking::TrackWithMotionModel() {
             end = mCurrentFrame->mKeyPointMap.End();
        i != end; ++i) {
     if (i->second.outlier) {
-      MapPoint* pMP = i->second.mapPoint;
+      MapPointPtr pMP = i->second.mapPoint;
       pointsToRemove.push_back(i->first);
       pMP->mnLastFrameSeen = mCurrentFrame->id();
       nmatches--;
@@ -491,7 +521,7 @@ bool Tracking::TrackLocalMap() {
   SearchLocalPoints();
 
   // Optimize Pose
-  Optimizer::PoseOptimization(mCurrentFrame.get());
+  Optimizer::PoseOptimization(mCurrentFrame);
   mnMatchesInliers = 0;
 
   // Update MapPoints Statistics
@@ -503,6 +533,10 @@ bool Tracking::TrackLocalMap() {
       if (i->second.mapPoint->Observations() > 0) mnMatchesInliers++;
     }
   }
+
+  auto trackCoeff = (mnMatchesInliers + 0.0) / mMinLocalMatchCount;
+  std::cout << "Tracking coefficient - " << trackCoeff
+            << ", if < 1.0 then tracking will be lost." << std::endl;
 
   // Decide if the tracking was succesful
   if (mnMatchesInliers < mMinLocalMatchCount)
@@ -539,6 +573,9 @@ bool Tracking::NeedNewKeyFrame() {
   const bool c2 = ((mnMatchesInliers < nRefMatches * thRefRatio) &&
                    mnMatchesInliers > mMinLocalMatchCount);
 
+  auto newKeyFrameCoeff = (nRefMatches * thRefRatio + 0.0) / mnMatchesInliers;
+  std::cout << "New KeyFrame coeff - " << newKeyFrameCoeff << ", shoule be > 1 to create new KF" << std::endl;
+
   if ((c1a || c1b) && c2) {
     return true;
   } else
@@ -548,7 +585,8 @@ bool Tracking::NeedNewKeyFrame() {
 void Tracking::CreateNewKeyFrame() {
   std::cout << "New KF created" << std::endl;
 
-  KeyFrame* pKF = mKeyFrameFactory->Create(*mCurrentFrame, mpMap, mpKeyFrameDB);
+  KeyFramePtr pKF =
+      mKeyFrameFactory->Create(*mCurrentFrame, mpMap, mpKeyFrameDB);
 
   mpReferenceKF = pKF;
   mCurrentFrame->mpReferenceKF = pKF;
@@ -565,7 +603,7 @@ void Tracking::SearchLocalPoints() {
   for (auto vit = mCurrentFrame->mKeyPointMap.Begin(),
             vend = mCurrentFrame->mKeyPointMap.End();
        vit != vend; ++vit) {
-    MapPoint* pMP = vit->second.mapPoint;
+    MapPointPtr pMP = vit->second.mapPoint;
     if (pMP) {
       if (pMP->isBad()) {
         pointsToRemove.push_back(vit->first);
@@ -581,24 +619,24 @@ void Tracking::SearchLocalPoints() {
   }
 
   // Project local frame points in frame and check its visibility
-  for (vector<KeyFrame*>::const_iterator itKF = mvpLocalKeyFrames.begin(),
-                                         itEndKF = mvpLocalKeyFrames.end();
+  for (vector<KeyFramePtr>::const_iterator itKF = mvpLocalKeyFrames.begin(),
+                                           itEndKF = mvpLocalKeyFrames.end();
        itKF != itEndKF; itKF++) {
-    KeyFrame* pKF = *itKF;
+    KeyFramePtr pKF = *itKF;
     auto vpMPs = pKF->GetMapPointMatches();
 
     // Project points in frame and check its visibility
     int nToMatch = 0;
     for (auto itMP = vpMPs.Begin(), itEndMP = vpMPs.End(); itMP != itEndMP;
          ++itMP) {
-      MapPoint* pMP = itMP->second.mapPoint;
+      MapPointPtr pMP = itMP->second.mapPoint;
       if (!pMP) continue;
       if (pMP->mnTrackReferenceForFrame == mCurrentFrame->id()) continue;
       if (!pMP->isBad()) {
         pMP->mnTrackReferenceForFrame = mCurrentFrame->id();
         if (pMP->mnLastFrameSeen != mCurrentFrame->id()) {
-          // Project (this fills MapPoint variables for matching)
-          if (mCurrentFrame->isInFrustum(pMP, 0.5)) {
+          // Project
+          if (mCurrentFrame->isInFrustum(*pMP, 0.5)) {
             pMP->IncreaseVisible();
             nToMatch++;
           }
@@ -607,7 +645,7 @@ void Tracking::SearchLocalPoints() {
     }
 
     if (nToMatch > 0) {
-      auto matchResult = mFeatureMatcher->MatchFrames(mCurrentFrame.get(), pKF);
+      auto matchResult = mFeatureMatcher->MatchFrames(*mCurrentFrame, *pKF);
       for (size_t i = 0; i < matchResult.keyPoints1.size(); ++i) {
         auto pMP1 = matchResult.GetMapPoint1(i);
         auto pMP2 = matchResult.GetMapPoint2(i);
@@ -624,11 +662,11 @@ void Tracking::SearchLocalPoints() {
 void Tracking::UpdateLocalKeyFrames() {
   // Each map point vote for the keyframes in which it has been observed
   std::vector<int> pointsToRemove;
-  map<KeyFrame*, int> keyframeCounter;
+  map<KeyFramePtr, int> keyframeCounter;
   for (auto i = mCurrentFrame->mKeyPointMap.Begin(),
             end = mCurrentFrame->mKeyPointMap.End();
        i != end; ++i) {
-    MapPoint* pMP = i->second.mapPoint;
+    MapPointPtr pMP = i->second.mapPoint;
     if (!pMP->isBad()) {
       const auto observations = pMP->GetObservations();
       for (auto it = observations.begin(), itend = observations.end();
@@ -646,17 +684,17 @@ void Tracking::UpdateLocalKeyFrames() {
   if (keyframeCounter.empty()) return;
 
   int max = 0;
-  KeyFrame* pKFmax = static_cast<KeyFrame*>(NULL);
+  KeyFramePtr pKFmax = static_cast<KeyFramePtr>(NULL);
 
   mvpLocalKeyFrames.clear();
   mvpLocalKeyFrames.reserve(3 * keyframeCounter.size());
 
   // All keyframes that observe a map point are included in the local map. Also
   // check which keyframe shares most points
-  for (map<KeyFrame*, int>::const_iterator it = keyframeCounter.begin(),
-                                           itEnd = keyframeCounter.end();
+  for (map<KeyFramePtr, int>::const_iterator it = keyframeCounter.begin(),
+                                             itEnd = keyframeCounter.end();
        it != itEnd; it++) {
-    KeyFrame* pKF = it->first;
+    KeyFramePtr pKF = it->first;
 
     if (pKF->isBad()) continue;
 
@@ -671,20 +709,20 @@ void Tracking::UpdateLocalKeyFrames() {
 
   // Include also some not-already-included keyframes that are neighbors to
   // already-included keyframes
-  for (vector<KeyFrame*>::const_iterator itKF = mvpLocalKeyFrames.begin(),
-                                         itEndKF = mvpLocalKeyFrames.end();
+  for (vector<KeyFramePtr>::const_iterator itKF = mvpLocalKeyFrames.begin(),
+                                           itEndKF = mvpLocalKeyFrames.end();
        itKF != itEndKF; itKF++) {
     // Limit the number of keyframes
     if (mvpLocalKeyFrames.size() > 80) break;
 
-    KeyFrame* pKF = *itKF;
+    KeyFramePtr pKF = *itKF;
 
-    const vector<KeyFrame*> vNeighs = pKF->GetBestCovisibilityKeyFrames(10);
+    const vector<KeyFramePtr> vNeighs = pKF->GetBestCovisibilityKeyFrames(10);
 
-    for (vector<KeyFrame*>::const_iterator itNeighKF = vNeighs.begin(),
-                                           itEndNeighKF = vNeighs.end();
+    for (vector<KeyFramePtr>::const_iterator itNeighKF = vNeighs.begin(),
+                                             itEndNeighKF = vNeighs.end();
          itNeighKF != itEndNeighKF; itNeighKF++) {
-      KeyFrame* pNeighKF = *itNeighKF;
+      KeyFramePtr pNeighKF = *itNeighKF;
       if (!pNeighKF->isBad()) {
         if (pNeighKF->mnTrackReferenceForFrame != mCurrentFrame->id()) {
           mvpLocalKeyFrames.push_back(pNeighKF);
@@ -694,11 +732,11 @@ void Tracking::UpdateLocalKeyFrames() {
       }
     }
 
-    const set<KeyFrame*> spChilds = pKF->GetChilds();
-    for (set<KeyFrame*>::const_iterator sit = spChilds.begin(),
-                                        send = spChilds.end();
+    const set<KeyFramePtr> spChilds = pKF->GetChilds();
+    for (set<KeyFramePtr>::const_iterator sit = spChilds.begin(),
+                                          send = spChilds.end();
          sit != send; sit++) {
-      KeyFrame* pChildKF = *sit;
+      KeyFramePtr pChildKF = *sit;
       if (!pChildKF->isBad()) {
         if (pChildKF->mnTrackReferenceForFrame != mCurrentFrame->id()) {
           mvpLocalKeyFrames.push_back(pChildKF);
@@ -708,7 +746,7 @@ void Tracking::UpdateLocalKeyFrames() {
       }
     }
 
-    KeyFrame* pParent = pKF->GetParent();
+    KeyFramePtr pParent = pKF->GetParent();
     if (pParent) {
       if (pParent->mnTrackReferenceForFrame != mCurrentFrame->id()) {
         mvpLocalKeyFrames.push_back(pParent);
@@ -728,8 +766,8 @@ bool Tracking::Relocalization() {
   // Relocalization is performed when tracking is lost
   // Track Lost: Query KeyFrame Database for keyframe candidates for
   // relocalisation
-  vector<KeyFrame*> vpCandidateKFs =
-      mpKeyFrameDB->DetectRelocalizationCandidates(mCurrentFrame.get());
+  vector<KeyFramePtr> vpCandidateKFs =
+      mpKeyFrameDB->DetectRelocalizationCandidates(*mCurrentFrame);
 
   if (vpCandidateKFs.empty()) return false;
 
@@ -738,7 +776,7 @@ bool Tracking::Relocalization() {
   // We perform first an matching with each candidate
   // If enough matches are found we setup a PnP solver
 
-  vector<PnPsolver*> vpPnPsolvers;
+  vector<std::unique_ptr<PnPsolver>> vpPnPsolvers;
   vpPnPsolvers.resize(nKFs);
 
   vector<MatchFramesResult> vvpMapPointMatches;
@@ -750,20 +788,20 @@ bool Tracking::Relocalization() {
   int nCandidates = 0;
 
   for (int i = 0; i < nKFs; i++) {
-    KeyFrame* pKF = vpCandidateKFs[i];
+    KeyFramePtr pKF = vpCandidateKFs[i];
     if (pKF->isBad())
       vbDiscarded[i] = true;
     else {
       vvpMapPointMatches[i] =
-          mFeatureMatcher->MatchFrames(mCurrentFrame.get(), pKF);
+          mFeatureMatcher->MatchFrames(*mCurrentFrame, *pKF);
       auto nmatches = vvpMapPointMatches[i].GetNumMatches();
       if (nmatches < mMinLocalMatchCount) {
         vbDiscarded[i] = true;
         continue;
       } else {
-        PnPsolver* pSolver = new PnPsolver(vvpMapPointMatches[i]);
+        auto pSolver = std::make_unique<PnPsolver>(vvpMapPointMatches[i]);
         pSolver->SetRansacParameters(0.99, 10, 300, 4, 0.5, 5.991f);
-        vpPnPsolvers[i] = pSolver;
+        vpPnPsolvers[i] = std::move(pSolver);
         nCandidates++;
       }
     }
@@ -784,7 +822,7 @@ bool Tracking::Relocalization() {
 
       CreateCurrentMatchImage(vvpMapPointMatches[i]);
 
-      PnPsolver* pSolver = vpPnPsolvers[i];
+      PnPsolver* pSolver = vpPnPsolvers[i].get();
       cv::Mat Tcw = pSolver->iterate(5, bNoMore, vbInliers, nInliers);
 
       // If Ransac reachs max. iterations discard keyframe
@@ -797,7 +835,7 @@ bool Tracking::Relocalization() {
       if (!Tcw.empty()) {
         Tcw.copyTo(mCurrentFrame->mTcw);
 
-        set<MapPoint*> sFound;
+        set<MapPointPtr> sFound;
 
         const auto np = vbInliers.size();
 
@@ -813,7 +851,7 @@ bool Tracking::Relocalization() {
           }
         }
 
-        int nGood = Optimizer::PoseOptimization(mCurrentFrame.get());
+        int nGood = Optimizer::PoseOptimization(mCurrentFrame);
 
         if (nGood < 10) {
           continue;

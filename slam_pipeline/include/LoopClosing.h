@@ -46,23 +46,23 @@
 
 namespace SLAM_PIPELINE {
 
-typedef std::pair<std::set<KeyFrame*>, int> ConsistentGroup;
+typedef std::pair<std::set<KeyFramePtr>, int> ConsistentGroup;
 typedef std::map<
-    KeyFrame*, g2o::Sim3, std::less<KeyFrame*>,
-    Eigen::aligned_allocator<std::pair<KeyFrame* const, g2o::Sim3> > >
+    KeyFramePtr, g2o::Sim3, std::less<KeyFramePtr>,
+    Eigen::aligned_allocator<std::pair<KeyFramePtr const, g2o::Sim3> > >
     KeyFrameAndPose;
 
 class LoopClosing {
  public:
   LoopClosing(Map* pMap, KeyFrameDatabase* pDB, FeatureMatcher* featureMatcher,
-              const FeatureParameters& parameters);
+              const SlamParameters& parameters);
 
   void SetLocalMapper(LocalMapping* pLocalMapper);
 
   // Main function
   void Run();
 
-  void InsertKeyFrame(KeyFrame* pKF);
+  void InsertKeyFrame(KeyFramePtr pKF);
 
   void Reset();
 
@@ -86,17 +86,17 @@ class LoopClosing {
 
   LocalMapping* mpLocalMapper;
 
-  std::list<KeyFrame*> mlpLoopKeyFrameQueue;
+  std::list<KeyFramePtr> mlpLoopKeyFrameQueue;
 
   // Loop detector parameters
   float mnCovisibilityConsistencyTh;
 
   // Loop detector variables
-  KeyFrame* mpCurrentKF;
-  KeyFrame* mpMatchedKF;
+  KeyFramePtr mpCurrentKF;
+  KeyFramePtr mpMatchedKF;
   std::vector<ConsistentGroup> mvConsistentGroups;
-  std::vector<KeyFrame*> mvpEnoughConsistentCandidates;
-  std::vector<KeyFrame*> mvpCurrentConnectedKFs;
+  std::vector<KeyFramePtr> mvpEnoughConsistentCandidates;
+  std::vector<KeyFramePtr> mvpCurrentConnectedKFs;
   MatchFramesResult mvpCurrentMatchedPoints;
   KeyPointMap mvpLoopMapPoints;
   cv::Mat mScw;
@@ -104,12 +104,13 @@ class LoopClosing {
 
   long unsigned int mLastLoopKFid;
 
-  // Fix scale in the stereo/RGB-D case
-  bool mbFixScale;
+  // Fix scale is not possible for monocular SLAM
+  const bool mbFixScale{false};
 
   int mLoopDetectionMaxFrames{10};
   int mMinSim3Matches{20};
   int mMinTotalSim3Matches{40};
+  double mMinSim3ReprojectionError{9.210};
 
   bool mnFullBAIdx;
 

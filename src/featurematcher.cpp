@@ -8,17 +8,17 @@ FeatureMatcher::FeatureMatcher(float threshold) : threshold_(threshold) {
 FeatureMatcher::~FeatureMatcher() {}
 
 SLAM_PIPELINE::MatchFramesResult FeatureMatcher::MatchFrames(
-    SLAM_PIPELINE::FrameBase* pF1, SLAM_PIPELINE::FrameBase* pF2) {
-  cv::Mat mask(255 * cv::Mat::ones(pF1->imGray.size(), CV_8U));
+    SLAM_PIPELINE::FrameBase& pF1, SLAM_PIPELINE::FrameBase& pF2) {
+  cv::Mat mask(255 * cv::Mat::ones(pF1.imGray.size(), CV_8U));
   cv::Mat first_desc, second_desc;
   std::vector<cv::KeyPoint> first_kp, second_kp;
-  feature_extractor_->detectAndCompute(pF1->imGray, mask, first_kp, first_desc);
-  feature_extractor_->detectAndCompute(pF2->imGray, mask, second_kp,
+  feature_extractor_->detectAndCompute(pF1.imGray, mask, first_kp, first_desc);
+  feature_extractor_->detectAndCompute(pF2.imGray, mask, second_kp,
                                        second_desc);
 
   SLAM_PIPELINE::MatchFramesResult matchResult;
-  matchResult.pF1 = pF1;
-  matchResult.pF2 = pF2;
+  matchResult.pF1 = &pF1;
+  matchResult.pF2 = &pF2;
 
   if (!first_desc.empty() && !second_desc.empty()) {
     matchResult.keyPoints1.reserve(100);

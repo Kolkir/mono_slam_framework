@@ -22,8 +22,7 @@
 
 #include <thread>
 
-#include "Converter.h"
-#include "FeatureMatcher.h"
+#include "MapPoint.h"
 
 namespace SLAM_PIPELINE {
 
@@ -46,9 +45,9 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, cv::Mat &K)
 
 long unsigned int Frame::id() const { return mnId; }
 
-bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit) {
+bool Frame::isInFrustum(const MapPoint &MP, float viewingCosLimit) {
   // 3D in absolute coordinates
-  cv::Mat P = pMP->GetWorldPos();
+  cv::Mat P = MP.GetWorldPos();
 
   // 3D in camera coordinates
   const cv::Mat Pc = mRcw * P + mtcw;
@@ -68,14 +67,14 @@ bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit) {
   if (v < mnMinY || v > mnMaxY) return false;
 
   // Check distance is in the scale invariance region of the MapPoint
-  const float distance = pMP->GetDistanceInvariance();
+  const float distance = MP.GetDistanceInvariance();
   const cv::Mat PO = P - mOw;
   const float dist = static_cast<float>(cv::norm(PO));
 
   if (dist < 0 || dist > distance) return false;
 
   // Check viewing angle
-  cv::Mat Pn = pMP->GetNormal();
+  cv::Mat Pn = MP.GetNormal();
 
   const float viewCos = static_cast<float>(PO.dot(Pn) / dist);
 
@@ -84,10 +83,12 @@ bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit) {
   return true;
 }
 
-Frame *FrameFactory::Create(const cv::Mat &imGray, const double &timeStamp,
-                            cv::Mat &K) const {
-  return new Frame(imGray, timeStamp, K);
+FramePtr FrameFactory::Create(const cv::Mat &imGray, const double &timeStamp,
+                              cv::Mat &K) const {
+  return FramePtr(new Frame(imGray, timeStamp, K));
 }
-Frame *FrameFactory::Clone(Frame *frame) const { return new Frame(*frame); }
+FramePtr FrameFactory::Clone(const Frame &frame) const {
+  return FramePtr(new Frame(frame));
+}
 
 }  // namespace SLAM_PIPELINE
