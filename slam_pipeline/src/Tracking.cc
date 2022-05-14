@@ -195,36 +195,6 @@ void Tracking::Track() {
     if (!mCurrentFrame->mpReferenceKF)
       mCurrentFrame->mpReferenceKF = mpReferenceKF;
 
-    // TEST SIM3
-    /*
-    {
-      auto matchResult = mFeatureMatcher->MatchFrames(
-          *mCurrentFrame, *mCurrentFrame->mpReferenceKF);
-      auto nmatches = matchResult.GetNumMatches();
-
-      int minSim3Matches = 15;
-      if (nmatches >= minSim3Matches) {
-        auto pSolver = std::make_unique<Sim3Solver>(matchResult, 9.210);
-        pSolver->SetRansacParameters(0.99, minSim3Matches, 300);
-        int nInliers = 0;
-        bool bNoMore = false;
-        std::vector<bool> vbInliers;
-        auto Scm = pSolver->iterate(5, bNoMore, vbInliers, nInliers);
-        std::cout << "Sim3 Test inliners : " << nInliers << std::endl;
-        if (nInliers > 0) {
-          if (Scm.empty())
-            std::cout << "Sim3 Test failed to found transform" << std::endl;
-        } else {
-          std::cout << "Sim3 Test failed no inliners" << std::endl;
-        }
-      } else {
-        std::cout << "Sim3 Test failed due to lack of feature matches"
-                  << std::endl;
-      }
-    }
-    */
-    // END TEST SIM3
-
     mLastFrame = FramePtr(mFrameFactory->Clone(*mCurrentFrame));
   }
 
